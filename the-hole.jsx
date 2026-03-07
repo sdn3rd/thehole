@@ -455,7 +455,7 @@ export default function TheHole() {
         textAlign: "center", color: "#fff",
         fontSize: "clamp(8px, 1.5vw, 10px)", letterSpacing: 2,
         zIndex: 2, pointerEvents: "none",
-      }}>v0.0.1a</div>
+      }}>v0.0.3a</div>
     </div>
   );
 }
