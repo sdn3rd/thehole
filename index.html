@@ -240,7 +240,7 @@
     /* ═══════════════════════════════════════════
        PORTAL EFFECT — Doctor Strange style ring
        ═══════════════════════════════════════════ */
-    function Portal({ cx, cy, radius, active }) {
+    function Portal({ cx, cy, radius, active, bonusCount }) {
       const canvasRef = useRef(null);
       const animRef = useRef(0);
 
@@ -260,6 +260,16 @@
         let alpha = 0;
         let running = true;
 
+        // color palette based on bonus count
+        // 3 = green, 2 = yellow, 1 = orange, 0 = red
+        const palettes = {
+          3: { r: 40, g: 220, b: 80, spark: '40,220,80', glow: 'rgba(40,220,80,' },
+          2: { r: 240, g: 210, b: 30, spark: '240,210,30', glow: 'rgba(240,210,30,' },
+          1: { r: 255, g: 140, b: 30, spark: '255,140,30', glow: 'rgba(255,140,30,' },
+          0: { r: 255, g: 40, b: 50, spark: '255,40,50', glow: 'rgba(255,40,50,' },
+        };
+        const pal = palettes[clamp(bonusCount || 0, 0, 3)];
+
         const draw = () => {
           if (!running) return;
           t += 0.04;
@@ -269,24 +279,23 @@
           c.globalAlpha = alpha;
 
           // outer sparks ring
-          const sparkCount = 40;
-          for (let i = 0; i < sparkCount; i++) {
-            const a = (i / sparkCount) * Math.PI * 2 + t * 2;
+          for (let i = 0; i < 40; i++) {
+            const a = (i / 40) * Math.PI * 2 + t * 2;
             const sparkR = radius + Math.sin(a * 5 + t * 8) * 6 + Math.random() * 3;
             const sx = center + Math.cos(a) * sparkR;
             const sy = center + Math.sin(a) * sparkR;
             const sparkSize = 1.5 + Math.random() * 2.5;
             const grad = c.createRadialGradient(sx, sy, 0, sx, sy, sparkSize * 2);
-            grad.addColorStop(0, "rgba(255,180,50,0.9)");
-            grad.addColorStop(0.5, "rgba(255,120,20,0.5)");
-            grad.addColorStop(1, "rgba(255,60,0,0)");
+            grad.addColorStop(0, pal.glow + '0.9)');
+            grad.addColorStop(0.5, pal.glow + '0.4)');
+            grad.addColorStop(1, pal.glow + '0)');
             c.fillStyle = grad;
             c.beginPath();
             c.arc(sx, sy, sparkSize * 2, 0, Math.PI * 2);
             c.fill();
           }
 
-          // main ring with teeth
+          // main ring with teeth — stroke only, no fill = transparent center
           const teeth = 60;
           c.save();
           c.translate(center, center);
@@ -304,24 +313,17 @@
               if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
             }
             c.closePath();
-            c.strokeStyle = 'rgba(255,' + (150 - layer * 30) + ',' + (30 + layer * 10) + ',' + layerAlpha + ')';
+            const dim = 1 - layer * 0.25;
+            c.strokeStyle = 'rgba(' + Math.floor(pal.r * dim) + ',' + Math.floor(pal.g * dim) + ',' + Math.floor(pal.b * dim) + ',' + layerAlpha + ')';
             c.lineWidth = 2 - layer * 0.5;
-            c.shadowColor = 'rgba(255,140,30,0.5)';
+            c.shadowColor = pal.glow + '0.5)';
             c.shadowBlur = 12;
             c.stroke();
             c.shadowBlur = 0;
           }
           c.restore();
 
-          // inner glow
-          const ig = c.createRadialGradient(center, center, radius * 0.3, center, center, radius);
-          ig.addColorStop(0, "rgba(255,150,30,0.1)");
-          ig.addColorStop(0.7, "rgba(255,100,20,0.05)");
-          ig.addColorStop(1, "rgba(255,60,0,0)");
-          c.fillStyle = ig;
-          c.beginPath();
-          c.arc(center, center, radius, 0, Math.PI * 2);
-          c.fill();
+          // no inner fill — center stays transparent to show black hole
 
           // flying embers
           for (let i = 0; i < 15; i++) {
@@ -330,7 +332,8 @@
             const ex = center + Math.cos(a) * er;
             const ey = center + Math.sin(a) * er;
             const es = 1 + Math.random() * 1.5;
-            c.fillStyle = 'rgba(255,' + Math.floor(150 + Math.random() * 80) + ',30,' + (0.3 + Math.random() * 0.4) + ')';
+            const emberBright = 0.3 + Math.random() * 0.4;
+            c.fillStyle = 'rgba(' + pal.spark + ',' + emberBright + ')';
             c.beginPath();
             c.arc(ex, ey, es, 0, Math.PI * 2);
             c.fill();
@@ -340,7 +343,7 @@
         };
         draw();
         return () => { running = false; cancelAnimationFrame(animRef.current); };
-      }, [active, radius]);
+      }, [active, radius, bonusCount]);
 
       if (!active) return null;
       const size = radius * 4;
@@ -623,6 +626,7 @@
       const [isSubmitting, setIsSubmitting] = useState(false);
       const [showTutorial, setShowTutorial] = useState(false);
       const [showPortal, setShowPortal] = useState(false);
+      const [portalBonusCount, setPortalBonusCount] = useState(0);
       const [scoreBreakdown, setScoreBreakdown] = useState([]);
       const hasFailedOnce = useRef(false);
 
@@ -639,7 +643,9 @@
 
       // Checkpoint system: saves at each multiplier milestone
       const [checkpoint, setCheckpoint] = useState(null);
-      const [retryUsed, setRetryUsed] = useState(false);
+      const [retriesLeft, setRetriesLeft] = useState(3);
+      const totalAccHits = useRef(0);
+      const totalAccAttempts = useRef(0);
 
       useEffect(() => {
         const measure = () => {
@@ -684,6 +690,7 @@
         setLineProgress(0);
         setLineFade(1);
         setShowPortal(false);
+        setPortalBonusCount(0);
         setScoreBreakdown([]);
         cancelAnimationFrame(fadeAnimRef.current);
         AudioEngine.stopLaser();
@@ -712,18 +719,20 @@
         setSubmitStatus("");
         setIsSubmitting(false);
         setCheckpoint(null);
-        setRetryUsed(false);
+        setRetriesLeft(3);
+        totalAccHits.current = 0;
+        totalAccAttempts.current = 0;
         setShowPortal(false);
         startLevel();
       };
 
       const retryFromCheckpoint = () => {
-        if (!checkpoint) return;
+        if (!checkpoint || retriesLeft <= 0) return;
         setTotalRound(checkpoint.round);
         setScore(checkpoint.score);
         internalScore.current = checkpoint.score;
         setHoleRadius(checkpoint.holeRadius);
-        setRetryUsed(true);
+        setRetriesLeft((prev) => prev - 1);
         startLevel();
       };
 
@@ -800,11 +809,14 @@
         if (result.passed) {
           AudioEngine.stopLaser();
           AudioEngine.playZap();
-          setShowPortal(true);
 
           const elapsed = (Date.now() - levelStartTime.current) / 1000;
           const timeRemaining = Math.max(0, maxTime - elapsed);
           const accuracyPct = Math.round(result.accuracy * 100);
+
+          // track overall accuracy for bonus retries
+          totalAccAttempts.current += 1;
+          totalAccHits.current += result.accuracy;
 
           // accuracy bonus multiplier: 95%+ = x1.5, scales down per 5%
           let accMult = 1.0;
@@ -822,6 +834,14 @@
           const accBoosted = Math.round(baseScore * accMult);
           // apply level multiplier
           const finalScore = Math.round((accBoosted + timeBonus) * multiplier);
+
+          // count bonuses for portal color: accuracy, time, level
+          let bonuses = 0;
+          if (accMult > 1) bonuses++;
+          if (timeBonus > 0) bonuses++;
+          if (multiplier > 1) bonuses++;
+          setPortalBonusCount(bonuses);
+          setShowPortal(true);
 
           internalScore.current += finalScore;
           setScore(internalScore.current);
@@ -963,14 +983,21 @@
 
       useEffect(() => {
         if (gameState === "success") {
-          // Check if we just hit a multiplier milestone
           if (totalRound > 0 && totalRound % 10 === 0) {
             const newLv = calcLevel(totalRound);
             const newMult = getMultiplier(newLv);
-            // Save checkpoint at current score (no doubling — multiplier handles the bonus going forward)
             setCheckpoint({ round: totalRound, score: internalScore.current, holeRadius: holeRadius });
-            setRetryUsed(false);
-            setMilestone({ mult: newMult, level: levelString(newLv) });
+
+            // bonus retry at 0/2/0 (round 20) and 0/3/0 (round 30) if overall accuracy >= 95%
+            const overallAcc = totalAccAttempts.current > 0
+              ? (totalAccHits.current / totalAccAttempts.current) * 100 : 0;
+            let bonusRetry = false;
+            if ((totalRound === 20 || totalRound === 30) && overallAcc >= 95) {
+              setRetriesLeft((prev) => prev + 1);
+              bonusRetry = true;
+            }
+
+            setMilestone({ mult: newMult, level: levelString(newLv), bonusRetry });
             const t = setTimeout(() => {
               setMilestone(null);
               startLevel();
@@ -1000,7 +1027,7 @@
       };
 
       const handleRetry = () => {
-        if (checkpoint && !retryUsed) {
+        if (retriesLeft > 0 && checkpoint) {
           retryFromCheckpoint();
         } else if (score === 0) {
           setGameState("scores");
@@ -1079,7 +1106,7 @@
           </svg>
 
           {/* PORTAL EFFECT on success */}
-          <Portal cx={cx} cy={cy} radius={circleR + 10} active={showPortal} />
+          <Portal cx={cx} cy={cy} radius={circleR + 10} active={showPortal} bonusCount={portalBonusCount} />
 
           {/* Red pulsing dot (z:15) */}
           {gameState === "playing" && !showLine && !attemptDone && (
@@ -1218,6 +1245,13 @@
                 fontSize: "clamp(10px,2.5vw,14px)",
                 color: "rgba(168,85,247,0.7)", letterSpacing: 3, marginTop: 12,
               }}>MULTIPLIER ACTIVE</div>
+              {milestone.bonusRetry && (
+                <div style={{
+                  fontSize: "clamp(12px,3vw,16px)", fontWeight: 700,
+                  color: "#40d0ff", letterSpacing: 4, marginTop: 10,
+                  textShadow: "0 0 15px rgba(64,208,255,0.5)",
+                }}>+1 RETRY</div>
+              )}
             </div>
           )}
 
@@ -1252,11 +1286,19 @@
                 <div style={{ fontSize: "clamp(10px,2.5vw,13px)", color: "rgba(255,255,255,0.3)", letterSpacing: 3, marginBottom: "3vh" }}>
                   {levelString(lv)}
                 </div>
-                <button onClick={handleRetry} style={{ background: "none", border: "1px solid rgba(168,85,247,0.4)", color: "#a855f7", padding: "12px 40px", fontSize: "clamp(12px,3vw,16px)", letterSpacing: 4, cursor: "pointer", borderRadius: 0, textTransform: "uppercase", fontFamily: "'Space Mono',monospace" }}>Retry</button>
-                {checkpoint && !retryUsed && (
-                  <div style={{ marginTop: 12, fontSize: "clamp(8px,1.8vw,10px)", color: "rgba(168,85,247,0.4)", letterSpacing: 2 }}>
-                    checkpoint: {levelString(calcLevel(checkpoint.round))}
-                  </div>
+                {retriesLeft > 0 && checkpoint ? (
+                  <>
+                    <button onClick={handleRetry} style={{ background: "none", border: "1px solid rgba(168,85,247,0.4)", color: "#a855f7", padding: "12px 40px", fontSize: "clamp(12px,3vw,16px)", letterSpacing: 4, cursor: "pointer", borderRadius: 0, textTransform: "uppercase", fontFamily: "'Space Mono',monospace" }}>
+                      Retry {retriesLeft}
+                    </button>
+                    <div style={{ marginTop: 12, fontSize: "clamp(8px,1.8vw,10px)", color: "rgba(168,85,247,0.4)", letterSpacing: 2 }}>
+                      checkpoint: {levelString(calcLevel(checkpoint.round))}
+                    </div>
+                  </>
+                ) : (
+                  <button onClick={handleRetry} style={{ background: "none", border: "1px solid rgba(168,85,247,0.4)", color: "#a855f7", padding: "12px 40px", fontSize: "clamp(12px,3vw,16px)", letterSpacing: 4, cursor: "pointer", borderRadius: 0, textTransform: "uppercase", fontFamily: "'Space Mono',monospace" }}>
+                    {score > 0 ? 'Submit Score' : 'Continue'}
+                  </button>
                 )}
               </>)}
 
@@ -1296,7 +1338,7 @@
             textAlign: "center", color: "#fff",
             fontSize: "clamp(8px, 1.5vw, 10px)", letterSpacing: 2,
             zIndex: 2, pointerEvents: "none",
-          }}>v0.1.2a</div>
+          }}>v0.1.3a</div>
         </div>
       );
     }
