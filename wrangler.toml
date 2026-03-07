@@ -1,9 +1,0 @@
-name = "the-hole"
-pages_build_output_dir = "."
-
-[[kv_namespaces]]
-binding = "SCORES"
-id = "a38519d46c8643b9850f3d1d8cd8a8ac"
-
-[vars]
-SCORE_SECRET = "k8Fj2mNx9pQr4sVw7yBz"
