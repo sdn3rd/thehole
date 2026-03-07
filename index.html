@@ -353,6 +353,14 @@
       const levelStartTime = useRef(0);
       const internalScore = useRef(0);
       const attemptDoneRef = useRef(false);
+      const isDraggingRef = useRef(false);
+      const showLineRef = useRef(false);
+      const dragPathRef = useRef([]);
+      const gameStateRef = useRef("menu");
+
+      // Checkpoint system: saves at each multiplier milestone
+      const [checkpoint, setCheckpoint] = useState(null);
+      const [retryUsed, setRetryUsed] = useState(false);
 
       useEffect(() => {
         const measure = () => {
@@ -363,6 +371,9 @@
         window.addEventListener("resize", measure);
         return () => window.removeEventListener("resize", measure);
       }, []);
+
+      // Sync gameState ref for native event handlers
+      useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
 
       useEffect(() => {
         let frame, t = 0;
@@ -389,14 +400,18 @@
         setLineFade(1);
         cancelAnimationFrame(fadeAnimRef.current);
         setDragPath([]);
+        dragPathRef.current = [];
         setShowLine(false);
+        showLineRef.current = false;
         setIsDragging(false);
+        isDraggingRef.current = false;
         setAttemptDone(false);
         attemptDoneRef.current = false;
         setTimeLeft(maxTime);
         setFeedback("");
         setShakeLevel(0);
         setGameState("playing");
+        gameStateRef.current = "playing";
       }, [lineLen, maxTime]);
 
       const startGame = () => {
@@ -405,6 +420,18 @@
         internalScore.current = 0;
         setHoleRadius(35);
         setSubmitStatus("");
+        setCheckpoint(null);
+        setRetryUsed(false);
+        startLevel();
+      };
+
+      const retryFromCheckpoint = () => {
+        if (!checkpoint) return;
+        setTotalRound(checkpoint.round);
+        setScore(checkpoint.score);
+        internalScore.current = checkpoint.score;
+        setHoleRadius(checkpoint.holeRadius);
+        setRetryUsed(true);
         startLevel();
       };
 
@@ -421,9 +448,11 @@
           if (remaining <= 0) {
             clearInterval(timerRef.current);
             attemptDoneRef.current = true;
+            isDraggingRef.current = false;
             setAttemptDone(true);
             setFeedback("TIME'S UP");
             setGameState("gameover");
+            gameStateRef.current = "gameover";
           }
         }, 30);
         return () => clearInterval(timerRef.current);
@@ -458,10 +487,12 @@
       }, [dotX, dotY, lineEndX, lineEndY]);
 
       const finishAttempt = useCallback((path) => {
+        if (attemptDoneRef.current) return;
         clearInterval(timerRef.current);
         cancelAnimationFrame(lineAnimRef.current);
         cancelAnimationFrame(fadeAnimRef.current);
         attemptDoneRef.current = true;
+        isDraggingRef.current = false;
         setAttemptDone(true);
         setIsDragging(false);
 
@@ -477,20 +508,27 @@
           setFeedback(multiplier > 1 ? '+' + finalScore + ' (' + multiplier + 'x)' : '+' + finalScore);
           setHoleRadius((prev) => prev + 6 + lv.set * 1.5);
           setGameState("success");
+          gameStateRef.current = "success";
           setTimeout(() => setTotalRound((p) => p + 1), 100);
         } else {
           setFeedback(result.reason || (result.coverage <= 0.5 ? "TRACE FURTHER" : "TOO SLOPPY"));
           setGameState("gameover");
+          gameStateRef.current = "gameover";
         }
       }, [evaluateDrag, maxTime, multiplier, lv.set]);
 
+      // All handlers use REFS not state — refs update synchronously so native touch events can't get stale values
       const handlePointerDown = useCallback((e) => {
-        if (gameState !== "playing" || attemptDoneRef.current) return;
+        if (gameStateRef.current !== "playing" || attemptDoneRef.current) return;
         e.preventDefault();
+        if (showLineRef.current) return; // already started
         const rect = containerRef.current.getBoundingClientRect();
         const px = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
         const py = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
-        if (!showLine && dist(px, py, dotX, dotY) < 35) {
+        if (dist(px, py, dotX, dotY) < 35) {
+          showLineRef.current = true;
+          isDraggingRef.current = true;
+          dragPathRef.current = [{ x: px, y: py }];
           setShowLine(true);
           setIsDragging(true);
           setDragPath([{ x: px, y: py }]);
@@ -517,23 +555,25 @@
           };
           anim();
         }
-      }, [gameState, showLine, dotX, dotY, totalRound]);
+      }, [dotX, dotY, totalRound, finishAttempt]);
 
       const handlePointerMove = useCallback((e) => {
-        if (attemptDoneRef.current || gameState !== "playing") return;
-        if (!isDragging) return;
+        if (!isDraggingRef.current || attemptDoneRef.current) return;
         e.preventDefault();
         const rect = containerRef.current.getBoundingClientRect();
         const px = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
         const py = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
-        setDragPath((prev) => [...prev, { x: px, y: py }]);
-      }, [isDragging, gameState]);
+        const pt = { x: px, y: py };
+        dragPathRef.current.push(pt);
+        setDragPath((prev) => [...prev, pt]);
+      }, []);
 
+      // CRITICAL: finger lift = immediate evaluation using ref path
       const handlePointerUp = useCallback((e) => {
-        if (attemptDoneRef.current || !isDragging || gameState !== "playing") return;
+        if (!isDraggingRef.current || attemptDoneRef.current) return;
         e.preventDefault();
-        finishAttempt(dragPath);
-      }, [isDragging, gameState, dragPath, finishAttempt]);
+        finishAttempt(dragPathRef.current);
+      }, [finishAttempt]);
 
       // Native non-passive touch listeners — blocks Android long-press & context menu
       useEffect(() => {
@@ -564,6 +604,9 @@
             // Double the current score as a bonus
             internalScore.current = internalScore.current * 2;
             setScore(internalScore.current);
+            // Save checkpoint
+            setCheckpoint({ round: totalRound, score: internalScore.current, holeRadius: holeRadius });
+            setRetryUsed(false);
             setMilestone({ mult: newMult, level: levelString(newLv) });
             const t = setTimeout(() => {
               setMilestone(null);
@@ -575,7 +618,7 @@
             return () => clearTimeout(t);
           }
         }
-      }, [gameState, totalRound, startLevel]);
+      }, [gameState, totalRound, startLevel, holeRadius]);
 
       const handleSubmitScore = async () => {
         const name = playerName.trim() || "ANON";
@@ -761,7 +804,12 @@
                 </div>
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "center" }}>
                   <button onClick={() => setGameState("submit")} style={{ background: "none", border: "1px solid rgba(168,85,247,0.4)", color: "#a855f7", padding: "10px 30px", fontSize: "clamp(11px,2.5vw,14px)", letterSpacing: 3, cursor: "pointer", borderRadius: 0, textTransform: "uppercase", fontFamily: "'Space Mono',monospace" }}>Submit Score</button>
-                  <button onClick={startGame} style={{ background: "none", border: "1px solid rgba(255,48,80,0.3)", color: "#ff3050", padding: "10px 30px", fontSize: "clamp(11px,2.5vw,14px)", letterSpacing: 3, cursor: "pointer", borderRadius: 0, textTransform: "uppercase", fontFamily: "'Space Mono',monospace" }}>Retry</button>
+                  {checkpoint && !retryUsed && (
+                    <button onClick={retryFromCheckpoint} style={{ background: "none", border: "1px solid rgba(168,85,247,0.3)", color: "rgba(168,85,247,0.7)", padding: "10px 30px", fontSize: "clamp(11px,2.5vw,14px)", letterSpacing: 3, cursor: "pointer", borderRadius: 0, textTransform: "uppercase", fontFamily: "'Space Mono',monospace" }}>
+                      Retry from {levelString(calcLevel(checkpoint.round))}
+                    </button>
+                  )}
+                  <button onClick={startGame} style={{ background: "none", border: "1px solid rgba(255,48,80,0.3)", color: "#ff3050", padding: "10px 30px", fontSize: "clamp(11px,2.5vw,14px)", letterSpacing: 3, cursor: "pointer", borderRadius: 0, textTransform: "uppercase", fontFamily: "'Space Mono',monospace" }}>Start Over</button>
                 </div>
               </>)}
 
