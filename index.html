@@ -517,83 +517,97 @@
         }
       }, [evaluateDrag, maxTime, multiplier, lv.set]);
 
-      // All handlers use REFS not state — refs update synchronously so native touch events can't get stale values
-      const handlePointerDown = useCallback((e) => {
-        if (gameStateRef.current !== "playing" || attemptDoneRef.current) return;
-        e.preventDefault();
-        if (showLineRef.current) return; // already started
-        const rect = containerRef.current.getBoundingClientRect();
-        const px = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-        const py = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
-        if (dist(px, py, dotX, dotY) < 35) {
-          showLineRef.current = true;
-          isDraggingRef.current = true;
-          dragPathRef.current = [{ x: px, y: py }];
-          setShowLine(true);
-          setIsDragging(true);
-          setDragPath([{ x: px, y: py }]);
-          levelStartTime.current = Date.now();
-          const drawSpeed = 0.12 + lv.set * 0.02 + lv.tier * 0.05;
-          const fadeSpeed = 0.015 + lv.set * 0.004 + lv.tier * 0.01;
-          let prog = 0;
-          const anim = () => {
-            prog += drawSpeed;
-            if (prog >= 1) {
-              setLineProgress(1);
-              let fade = 1;
-              const fadeAnim = () => {
-                fade -= fadeSpeed;
-                if (fade <= 0) { setLineFade(0); return; }
-                setLineFade(fade);
-                fadeAnimRef.current = requestAnimationFrame(fadeAnim);
-              };
-              fadeAnimRef.current = requestAnimationFrame(fadeAnim);
-              return;
-            }
-            setLineProgress(prog);
-            lineAnimRef.current = requestAnimationFrame(anim);
-          };
-          anim();
-        }
-      }, [dotX, dotY, totalRound, finishAttempt]);
-
-      const handlePointerMove = useCallback((e) => {
-        if (!isDraggingRef.current || attemptDoneRef.current) return;
-        e.preventDefault();
-        const rect = containerRef.current.getBoundingClientRect();
-        const px = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-        const py = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
-        const pt = { x: px, y: py };
-        dragPathRef.current.push(pt);
-        setDragPath((prev) => [...prev, pt]);
-      }, []);
-
-      // CRITICAL: finger lift = immediate evaluation using ref path
-      const handlePointerUp = useCallback((e) => {
-        if (!isDraggingRef.current || attemptDoneRef.current) return;
-        e.preventDefault();
-        finishAttempt(dragPathRef.current);
-      }, [finishAttempt]);
-
-      // Native non-passive touch listeners — blocks Android long-press & context menu
+      // FULLY NATIVE event handling — no React synthetic events at all
+      // This eliminates any race between React's event system and native touch
       useEffect(() => {
         const el = containerRef.current;
         if (!el) return;
         const opts = { passive: false };
+
+        const onDown = (e) => {
+          if (gameStateRef.current !== "playing" || attemptDoneRef.current) return;
+          const isTouch = e.type === 'touchstart';
+          if (isTouch) e.preventDefault();
+          if (showLineRef.current) return;
+          const rect = el.getBoundingClientRect();
+          const px = (isTouch ? e.touches[0].clientX : e.clientX) - rect.left;
+          const py = (isTouch ? e.touches[0].clientY : e.clientY) - rect.top;
+          if (dist(px, py, dotX, dotY) < 35) {
+            showLineRef.current = true;
+            isDraggingRef.current = true;
+            dragPathRef.current = [{ x: px, y: py }];
+            setShowLine(true);
+            setIsDragging(true);
+            setDragPath([{ x: px, y: py }]);
+            levelStartTime.current = Date.now();
+            const drawSpeed = 0.12 + lv.set * 0.02 + lv.tier * 0.05;
+            const fadeSpeed = 0.015 + lv.set * 0.004 + lv.tier * 0.01;
+            let prog = 0;
+            const anim = () => {
+              prog += drawSpeed;
+              if (prog >= 1) {
+                setLineProgress(1);
+                let fade = 1;
+                const fadeAnim = () => {
+                  fade -= fadeSpeed;
+                  if (fade <= 0) { setLineFade(0); return; }
+                  setLineFade(fade);
+                  fadeAnimRef.current = requestAnimationFrame(fadeAnim);
+                };
+                fadeAnimRef.current = requestAnimationFrame(fadeAnim);
+                return;
+              }
+              setLineProgress(prog);
+              lineAnimRef.current = requestAnimationFrame(anim);
+            };
+            anim();
+          }
+        };
+
+        const onMove = (e) => {
+          if (!isDraggingRef.current || attemptDoneRef.current) return;
+          const isTouch = e.type === 'touchmove';
+          if (isTouch) e.preventDefault();
+          const rect = el.getBoundingClientRect();
+          const px = (isTouch ? e.touches[0].clientX : e.clientX) - rect.left;
+          const py = (isTouch ? e.touches[0].clientY : e.clientY) - rect.top;
+          const pt = { x: px, y: py };
+          dragPathRef.current.push(pt);
+          setDragPath((prev) => [...prev, pt]);
+        };
+
+        const onUp = (e) => {
+          if (!isDraggingRef.current || attemptDoneRef.current) return;
+          const isTouch = e.type === 'touchend' || e.type === 'touchcancel';
+          if (isTouch) e.preventDefault();
+          finishAttempt(dragPathRef.current);
+        };
+
         const noContext = (e) => e.preventDefault();
-        el.addEventListener('touchstart', handlePointerDown, opts);
-        el.addEventListener('touchmove', handlePointerMove, opts);
-        el.addEventListener('touchend', handlePointerUp, opts);
-        el.addEventListener('touchcancel', handlePointerUp, opts);
+
+        // Touch events (mobile)
+        el.addEventListener('touchstart', onDown, opts);
+        el.addEventListener('touchmove', onMove, opts);
+        el.addEventListener('touchend', onUp, opts);
+        el.addEventListener('touchcancel', onUp, opts);
+        // Mouse events (desktop)
+        el.addEventListener('mousedown', onDown);
+        el.addEventListener('mousemove', onMove);
+        el.addEventListener('mouseup', onUp);
+        // Block context menu
         el.addEventListener('contextmenu', noContext);
+
         return () => {
-          el.removeEventListener('touchstart', handlePointerDown, opts);
-          el.removeEventListener('touchmove', handlePointerMove, opts);
-          el.removeEventListener('touchend', handlePointerUp, opts);
-          el.removeEventListener('touchcancel', handlePointerUp, opts);
+          el.removeEventListener('touchstart', onDown, opts);
+          el.removeEventListener('touchmove', onMove, opts);
+          el.removeEventListener('touchend', onUp, opts);
+          el.removeEventListener('touchcancel', onUp, opts);
+          el.removeEventListener('mousedown', onDown);
+          el.removeEventListener('mousemove', onMove);
+          el.removeEventListener('mouseup', onUp);
           el.removeEventListener('contextmenu', noContext);
         };
-      }, [handlePointerDown, handlePointerMove, handlePointerUp]);
+      }, [dotX, dotY, totalRound, finishAttempt]);
 
       useEffect(() => {
         if (gameState === "success") {
@@ -639,7 +653,6 @@
       return (
         <div
           ref={containerRef}
-          onMouseDown={handlePointerDown} onMouseMove={handlePointerMove} onMouseUp={handlePointerUp}
           style={{
             position: "fixed", inset: 0, background: "#08060e",
             overflow: "hidden", cursor: isDragging ? "grabbing" : "default",
