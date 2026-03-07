@@ -647,6 +647,14 @@
         }
       };
 
+      const handleRetry = () => {
+        if (checkpoint && !retryUsed) {
+          retryFromCheckpoint();
+        } else {
+          setGameState("submit");
+        }
+      };
+
       const timerWidth = showLine ? (timeLeft / maxTime) * 100 : 100;
       const timerColor = timeLeft < 0.8 ? "#ff2040" : timeLeft < 1.5 ? "#ffaa00" : "#a855f7";
 
@@ -712,7 +720,7 @@
               borderRadius: "50%", background: "radial-gradient(circle, #ff3050, #cc1030)",
               transform: "translate(-50%,-50%)", zIndex: 15,
               animation: "pulseRed 1s ease-in-out infinite",
-              cursor: "pointer", pointerEvents: "auto",
+              cursor: "pointer", pointerEvents: "none",
             }} />
           )}
 
@@ -813,17 +821,14 @@
                 <div style={{ fontSize: "clamp(20px,6vw,40px)", fontWeight: 700, color: "#ff3050", letterSpacing: 4, marginBottom: 16 }}>{feedback || "CONSUMED"}</div>
                 <div style={{ fontSize: "clamp(28px,8vw,56px)", fontWeight: 700, color: "#fff", marginBottom: 8 }}>{score.toLocaleString()}</div>
                 <div style={{ fontSize: "clamp(10px,2.5vw,13px)", color: "rgba(255,255,255,0.3)", letterSpacing: 3, marginBottom: "3vh" }}>
-                  {levelString(lv)} · FINAL SCORE
+                  {levelString(lv)}
                 </div>
-                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "center" }}>
-                  <button onClick={() => setGameState("submit")} style={{ background: "none", border: "1px solid rgba(168,85,247,0.4)", color: "#a855f7", padding: "10px 30px", fontSize: "clamp(11px,2.5vw,14px)", letterSpacing: 3, cursor: "pointer", borderRadius: 0, textTransform: "uppercase", fontFamily: "'Space Mono',monospace" }}>Submit Score</button>
-                  {checkpoint && !retryUsed && (
-                    <button onClick={retryFromCheckpoint} style={{ background: "none", border: "1px solid rgba(168,85,247,0.3)", color: "rgba(168,85,247,0.7)", padding: "10px 30px", fontSize: "clamp(11px,2.5vw,14px)", letterSpacing: 3, cursor: "pointer", borderRadius: 0, textTransform: "uppercase", fontFamily: "'Space Mono',monospace" }}>
-                      Retry from {levelString(calcLevel(checkpoint.round))}
-                    </button>
-                  )}
-                  <button onClick={startGame} style={{ background: "none", border: "1px solid rgba(255,48,80,0.3)", color: "#ff3050", padding: "10px 30px", fontSize: "clamp(11px,2.5vw,14px)", letterSpacing: 3, cursor: "pointer", borderRadius: 0, textTransform: "uppercase", fontFamily: "'Space Mono',monospace" }}>Start Over</button>
-                </div>
+                <button onClick={handleRetry} style={{ background: "none", border: "1px solid rgba(168,85,247,0.4)", color: "#a855f7", padding: "12px 40px", fontSize: "clamp(12px,3vw,16px)", letterSpacing: 4, cursor: "pointer", borderRadius: 0, textTransform: "uppercase", fontFamily: "'Space Mono',monospace" }}>Retry</button>
+                {checkpoint && !retryUsed && (
+                  <div style={{ marginTop: 12, fontSize: "clamp(8px,1.8vw,10px)", color: "rgba(168,85,247,0.4)", letterSpacing: 2 }}>
+                    checkpoint: {levelString(calcLevel(checkpoint.round))}
+                  </div>
+                )}
               </>)}
 
               {gameState === "submit" && (<>
