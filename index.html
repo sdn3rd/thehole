@@ -79,30 +79,79 @@
     function rand(a, b) { return a + Math.random() * (b - a); }
 
     /* ═══════════════════════════════════════════
-       SCOREBOARD API — calls Cloudflare Worker
+       SCOREBOARD — network-first, localStorage fallback
        ═══════════════════════════════════════════ */
-    async function loadScoreboard() {
+    let _online = null; // null = unknown, true/false after first attempt
+
+    function getLocalScores() {
       try {
-        const res = await fetch('/api/scores');
-        if (!res.ok) return [];
-        return await res.json();
+        const raw = localStorage.getItem('hole-scores');
+        return raw ? JSON.parse(raw) : [];
       } catch { return []; }
     }
 
-    async function submitScore(name, score, levelStr, totalRounds) {
+    function saveLocalScores(scores) {
       try {
+        localStorage.setItem('hole-scores', JSON.stringify(scores.slice(0, 50)));
+      } catch {}
+    }
+
+    async function loadScoreboard() {
+      // try network first
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 3000);
+        const res = await fetch('/api/scores', { signal: controller.signal });
+        clearTimeout(timeout);
+        if (res.ok) {
+          const data = await res.json();
+          _online = true;
+          // cache remotely fetched scores locally too
+          if (data.length > 0) saveLocalScores(data);
+          return { scores: data, source: 'online' };
+        }
+      } catch {}
+      // fallback to local
+      _online = false;
+      return { scores: getLocalScores(), source: 'local' };
+    }
+
+    async function submitScore(name, score, levelStr, totalRounds) {
+      const entry = {
+        n: (name || 'ANON').slice(0, 16),
+        s: score,
+        l: levelStr,
+        r: totalRounds,
+        t: Date.now(),
+      };
+
+      // always save locally first
+      const local = getLocalScores();
+      local.push(entry);
+      local.sort((a, b) => b.s - a.s);
+      saveLocalScores(local);
+
+      // try network
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 3000);
         const res = await fetch('/api/scores', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: name,
-            score: score,
-            level: levelStr,
-            rounds: totalRounds,
-          }),
+          body: JSON.stringify({ name: entry.n, score: score, level: levelStr, rounds: totalRounds }),
+          signal: controller.signal,
         });
-        return await res.json();
-      } catch { return { error: 'Network error' }; }
+        clearTimeout(timeout);
+        if (res.ok) {
+          const data = await res.json();
+          _online = true;
+          return { ...data, source: 'online' };
+        }
+      } catch {}
+
+      _online = false;
+      const rank = local.findIndex(e => e.t === entry.t) + 1;
+      return { success: true, rank: rank, source: 'local' };
     }
 
     /* ═══════════════════════════════════════════
@@ -215,10 +264,15 @@
        ═══════════════════════════════════════════ */
     function Scoreboard({ onClose }) {
       const [scores, setScores] = useState([]);
+      const [source, setSource] = useState('');
       const [loading, setLoading] = useState(true);
 
       useEffect(() => {
-        loadScoreboard().then(s => { setScores(s); setLoading(false); });
+        loadScoreboard().then(result => {
+          setScores(result.scores);
+          setSource(result.source);
+          setLoading(false);
+        });
       }, []);
 
       return (
@@ -228,7 +282,10 @@
           display: "flex", flexDirection: "column", alignItems: "center",
           padding: "max(16px, 3vh) 5vw", overflow: "auto",
         }}>
-          <div style={{ fontSize: "clamp(20px,5vw,32px)", fontWeight: 700, color: "#a855f7", letterSpacing: 4, marginBottom: "2vh" }}>VOID LEDGER</div>
+          <div style={{ fontSize: "clamp(20px,5vw,32px)", fontWeight: 700, color: "#a855f7", letterSpacing: 4, marginBottom: "1vh" }}>VOID LEDGER</div>
+          {source === 'local' && (
+            <div style={{ fontSize: "clamp(8px,1.8vw,10px)", color: "#ff3050", letterSpacing: 2, marginBottom: "1.5vh", textTransform: "uppercase" }}>offline · local scores only</div>
+          )}
           {loading ? (
             <div style={{ color: "#555", fontSize: 14 }}>Loading...</div>
           ) : scores.length === 0 ? (
@@ -464,7 +521,8 @@
         if (result.error) {
           setSubmitStatus("Failed: " + result.error);
         } else {
-          setSubmitStatus(result.rank ? "Rank #" + result.rank + "!" : "Submitted!");
+          const where = result.source === 'local' ? ' (local)' : '';
+          setSubmitStatus(result.rank ? "Rank #" + result.rank + "!" + where : "Saved!" + where);
           setTimeout(() => setGameState("scores"), 1200);
         }
       };
