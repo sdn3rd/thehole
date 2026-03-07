@@ -473,8 +473,8 @@
       }, [evaluateDrag, maxTime, multiplier, lv.set]);
 
       const handlePointerDown = useCallback((e) => {
-        e.preventDefault();
         if (gameState !== "playing" || attemptDone) return;
+        e.preventDefault();
         const rect = containerRef.current.getBoundingClientRect();
         const px = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
         const py = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
@@ -495,18 +495,17 @@
       }, [gameState, attemptDone, showLine, dotX, dotY]);
 
       const handlePointerMove = useCallback((e) => {
-        e.preventDefault();
         if (!isDragging || gameState !== "playing" || attemptDone) return;
+        e.preventDefault();
         const rect = containerRef.current.getBoundingClientRect();
         const px = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
         const py = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
         setDragPath((prev) => [...prev, { x: px, y: py }]);
       }, [isDragging, gameState, attemptDone]);
 
-      // CRITICAL: finger lift = immediate evaluation, no second tap allowed
       const handlePointerUp = useCallback((e) => {
-        e.preventDefault();
         if (!isDragging || gameState !== "playing" || attemptDone) return;
+        e.preventDefault();
         finishAttempt(dragPath);
       }, [isDragging, gameState, attemptDone, dragPath, finishAttempt]);
 
