@@ -331,6 +331,7 @@
       const [dotAngle, setDotAngle] = useState(0);
       const [lineTarget, setLineTarget] = useState(null);
       const [lineProgress, setLineProgress] = useState(0);
+      const [lineFade, setLineFade] = useState(1);
       const [dragPath, setDragPath] = useState([]);
       const [isDragging, setIsDragging] = useState(false);
       const [timeLeft, setTimeLeft] = useState(3);
@@ -345,6 +346,7 @@
 
       const timerRef = useRef(null);
       const lineAnimRef = useRef(null);
+      const fadeAnimRef = useRef(null);
       const levelStartTime = useRef(0);
       const internalScore = useRef(0);
 
@@ -380,6 +382,8 @@
         setDotAngle(angle);
         setLineTarget({ angle: angle + rand(-0.6, 0.6), length: lineLen });
         setLineProgress(0);
+        setLineFade(1);
+        cancelAnimationFrame(fadeAnimRef.current);
         setDragPath([]);
         setShowLine(false);
         setIsDragging(false);
@@ -450,6 +454,7 @@
       const finishAttempt = useCallback((path) => {
         clearInterval(timerRef.current);
         cancelAnimationFrame(lineAnimRef.current);
+        cancelAnimationFrame(fadeAnimRef.current);
         setAttemptDone(true);
         setIsDragging(false);
 
@@ -483,16 +488,32 @@
           setIsDragging(true);
           setDragPath([{ x: px, y: py }]);
           levelStartTime.current = Date.now();
+          // line draws faster each set: 0.12 base, increasing
+          const drawSpeed = 0.12 + lv.set * 0.02 + lv.tier * 0.05;
+          // fade speed: line disappears faster at higher levels
+          const fadeSpeed = 0.015 + lv.set * 0.004 + lv.tier * 0.01;
           let prog = 0;
           const anim = () => {
-            prog += 0.06;
-            if (prog >= 1) { setLineProgress(1); return; }
+            prog += drawSpeed;
+            if (prog >= 1) {
+              setLineProgress(1);
+              // start fading the line out immediately
+              let fade = 1;
+              const fadeAnim = () => {
+                fade -= fadeSpeed;
+                if (fade <= 0) { setLineFade(0); return; }
+                setLineFade(fade);
+                fadeAnimRef.current = requestAnimationFrame(fadeAnim);
+              };
+              fadeAnimRef.current = requestAnimationFrame(fadeAnim);
+              return;
+            }
             setLineProgress(prog);
             lineAnimRef.current = requestAnimationFrame(anim);
           };
           anim();
         }
-      }, [gameState, attemptDone, showLine, dotX, dotY]);
+      }, [gameState, attemptDone, showLine, dotX, dotY, totalRound]);
 
       const handlePointerMove = useCallback((e) => {
         if (!isDragging || gameState !== "playing" || attemptDone) return;
@@ -588,15 +609,15 @@
             width={dims.w} height={dims.h}>
             <circle cx={cx} cy={cy} r={circleR} fill="none" stroke="rgba(168,85,247,0.35)" strokeWidth={2} />
             <circle cx={cx} cy={cy} r={circleR} fill="none" stroke="rgba(168,85,247,0.1)" strokeWidth={circleR * 0.4} strokeDasharray="2 8" />
-            {showLine && lineTarget && (
+            {showLine && lineTarget && lineFade > 0 && (
               <line x1={dotX} y1={dotY}
                 x2={lerp(dotX, lineEndX, lineProgress)} y2={lerp(dotY, lineEndY, lineProgress)}
-                stroke="rgba(168,85,247,0.8)" strokeWidth={3} strokeLinecap="round"
-                style={{ filter: "drop-shadow(0 0 6px rgba(168,85,247,0.5))" }} />
+                stroke={'rgba(168,85,247,' + (0.8 * lineFade) + ')'} strokeWidth={3} strokeLinecap="round"
+                style={{ filter: lineFade > 0.3 ? "drop-shadow(0 0 6px rgba(168,85,247,0.5))" : "none" }} />
             )}
-            {showLine && lineTarget && lineProgress >= 1 && (
-              <circle cx={lineEndX} cy={lineEndY} r={5} fill="rgba(168,85,247,0.6)"
-                style={{ filter: "drop-shadow(0 0 8px rgba(168,85,247,0.8))" }} />
+            {showLine && lineTarget && lineProgress >= 1 && lineFade > 0 && (
+              <circle cx={lineEndX} cy={lineEndY} r={5} fill={'rgba(168,85,247,' + (0.6 * lineFade) + ')'}
+                style={{ filter: lineFade > 0.3 ? "drop-shadow(0 0 8px rgba(168,85,247,0.8))" : "none" }} />
             )}
             {dragPath.length > 1 && (
               <polyline points={dragPath.map((p) => p.x + "," + p.y).join(" ")}
@@ -741,3 +762,4 @@
   </script>
 </body>
 </html>
+
