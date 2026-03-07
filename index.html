@@ -883,10 +883,7 @@
           if (totalRound > 0 && totalRound % 10 === 0) {
             const newLv = calcLevel(totalRound);
             const newMult = getMultiplier(newLv);
-            // Double the current score as a bonus
-            internalScore.current = internalScore.current * 2;
-            setScore(internalScore.current);
-            // Save checkpoint
+            // Save checkpoint at current score (no doubling — multiplier handles the bonus going forward)
             setCheckpoint({ round: totalRound, score: internalScore.current, holeRadius: holeRadius });
             setRetryUsed(false);
             setMilestone({ mult: newMult, level: levelString(newLv) });
@@ -1104,7 +1101,7 @@
               <div style={{
                 fontSize: "clamp(10px,2.5vw,14px)",
                 color: "rgba(168,85,247,0.7)", letterSpacing: 3, marginTop: 12,
-              }}>SCORE DOUBLED</div>
+              }}>MULTIPLIER ACTIVE</div>
             </div>
           )}
 
@@ -1183,7 +1180,7 @@
             textAlign: "center", color: "#fff",
             fontSize: "clamp(8px, 1.5vw, 10px)", letterSpacing: 2,
             zIndex: 2, pointerEvents: "none",
-          }}>v0.1.0a</div>
+          }}>v0.1.1a</div>
         </div>
       );
     }
@@ -1192,4 +1189,5 @@
   </script>
 </body>
 </html>
+
 
