@@ -70,8 +70,8 @@
       return total === 0 ? 1 : total + 1;
     }
     function getMaxTime(totalRound) {
-      // each round shaves off a bit: 3.0s → decays per round, min 0.4s
-      return Math.max(0.4, 3.0 - totalRound * 0.025);
+      // 2s start, aggressive decay: ~0.5s by round 10, ~0.28s by round 20
+      return Math.max(0.2, 2.0 / (1 + totalRound * 0.3));
     }
 
     const LINE_LENGTH_BASE = 120;
@@ -866,7 +866,7 @@
             textAlign: "center", color: "#fff",
             fontSize: "clamp(8px, 1.5vw, 10px)", letterSpacing: 2,
             zIndex: 2, pointerEvents: "none",
-          }}>v0.0.3a</div>
+          }}>v0.0.2a</div>
         </div>
       );
     }
