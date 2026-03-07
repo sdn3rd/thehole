@@ -472,7 +472,8 @@
         }
       }, [evaluateDrag, maxTime, multiplier, lv.set]);
 
-      const handlePointerDown = (e) => {
+      const handlePointerDown = useCallback((e) => {
+        e.preventDefault();
         if (gameState !== "playing" || attemptDone) return;
         const rect = containerRef.current.getBoundingClientRect();
         const px = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
@@ -491,21 +492,43 @@
           };
           anim();
         }
-      };
+      }, [gameState, attemptDone, showLine, dotX, dotY]);
 
-      const handlePointerMove = (e) => {
+      const handlePointerMove = useCallback((e) => {
+        e.preventDefault();
         if (!isDragging || gameState !== "playing" || attemptDone) return;
         const rect = containerRef.current.getBoundingClientRect();
         const px = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
         const py = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
         setDragPath((prev) => [...prev, { x: px, y: py }]);
-      };
+      }, [isDragging, gameState, attemptDone]);
 
       // CRITICAL: finger lift = immediate evaluation, no second tap allowed
-      const handlePointerUp = () => {
+      const handlePointerUp = useCallback((e) => {
+        e.preventDefault();
         if (!isDragging || gameState !== "playing" || attemptDone) return;
         finishAttempt(dragPath);
-      };
+      }, [isDragging, gameState, attemptDone, dragPath, finishAttempt]);
+
+      // Native non-passive touch listeners — blocks Android long-press & context menu
+      useEffect(() => {
+        const el = containerRef.current;
+        if (!el) return;
+        const opts = { passive: false };
+        const noContext = (e) => e.preventDefault();
+        el.addEventListener('touchstart', handlePointerDown, opts);
+        el.addEventListener('touchmove', handlePointerMove, opts);
+        el.addEventListener('touchend', handlePointerUp, opts);
+        el.addEventListener('touchcancel', handlePointerUp, opts);
+        el.addEventListener('contextmenu', noContext);
+        return () => {
+          el.removeEventListener('touchstart', handlePointerDown, opts);
+          el.removeEventListener('touchmove', handlePointerMove, opts);
+          el.removeEventListener('touchend', handlePointerUp, opts);
+          el.removeEventListener('touchcancel', handlePointerUp, opts);
+          el.removeEventListener('contextmenu', noContext);
+        };
+      }, [handlePointerDown, handlePointerMove, handlePointerUp]);
 
       useEffect(() => {
         if (gameState === "success") {
@@ -534,11 +557,11 @@
         <div
           ref={containerRef}
           onMouseDown={handlePointerDown} onMouseMove={handlePointerMove} onMouseUp={handlePointerUp}
-          onTouchStart={handlePointerDown} onTouchMove={handlePointerMove} onTouchEnd={handlePointerUp}
           style={{
             position: "fixed", inset: 0, background: "#08060e",
             overflow: "hidden", cursor: isDragging ? "grabbing" : "default",
             userSelect: "none", WebkitUserSelect: "none", touchAction: "none",
+            WebkitTouchCallout: "none", WebkitTapHighlightColor: "transparent",
           }}
         >
           <BackgroundBlobs />
