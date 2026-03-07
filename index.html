@@ -50,17 +50,64 @@
   <script type="text/babel">
     const { useState, useEffect, useRef, useCallback } = React;
 
-    const TOTAL_LEVELS = 10;
-    const BASE_TIME = 3.0;
-    const TIME_DECAY = 0.18;
-    const LINE_LENGTH_BASE = 120;
+    /* ═══════════════════════════════════════════
+       LEVEL SYSTEM: tier / set / sub
+       tier = multiplier bracket (every 100 rounds)
+       set  = difficulty bracket (every 10 rounds)
+       sub  = round within current set (1-10)
+       ═══════════════════════════════════════════ */
+    function calcLevel(totalRound) {
+      const sub = (totalRound % 10) + 1;
+      const set = Math.floor(totalRound / 10) % 10;
+      const tier = Math.floor(totalRound / 100);
+      return { tier, set, sub };
+    }
+    function levelString(lv) {
+      return lv.tier + ' / ' + lv.set + ' / ' + lv.sub;
+    }
+    function getMultiplier(tier) {
+      return tier === 0 ? 1 : tier + 1;
+    }
+    function getMaxTime(set, tier) {
+      return Math.max(0.4, 3.0 - (set + tier * 10) * 0.15);
+    }
 
+    const LINE_LENGTH_BASE = 120;
     function lerp(a, b, t) { return a + (b - a) * t; }
     function dist(x1, y1, x2, y2) { return Math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2); }
     function clamp(v, mn, mx) { return Math.max(mn, Math.min(mx, v)); }
     function rand(a, b) { return a + Math.random() * (b - a); }
 
-    /* ─── Black Hole (canvas) ─── */
+    /* ═══════════════════════════════════════════
+       SCOREBOARD API — calls Cloudflare Worker
+       ═══════════════════════════════════════════ */
+    async function loadScoreboard() {
+      try {
+        const res = await fetch('/api/scores');
+        if (!res.ok) return [];
+        return await res.json();
+      } catch { return []; }
+    }
+
+    async function submitScore(name, score, levelStr, totalRounds) {
+      try {
+        const res = await fetch('/api/scores', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: name,
+            score: score,
+            level: levelStr,
+            rounds: totalRounds,
+          }),
+        });
+        return await res.json();
+      } catch { return { error: 'Network error' }; }
+    }
+
+    /* ═══════════════════════════════════════════
+       BLACK HOLE (canvas)
+       ═══════════════════════════════════════════ */
     function BlackHole({ size, radius }) {
       const canvasRef = useRef(null);
       const animRef = useRef(0);
@@ -75,32 +122,26 @@
         canvas.style.width = size + "px";
         canvas.style.height = size + "px";
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-        let t = 0;
-        let running = true;
+        let t = 0, running = true;
         const center = size / 2;
-
         const draw = () => {
           if (!running) return;
           t += 0.012;
           ctx.clearRect(0, 0, size, size);
-
-          const layers = 6;
-          for (let l = layers; l >= 0; l--) {
+          for (let l = 6; l >= 0; l--) {
             const layerR = radius * (1 + l * 0.15);
             const alpha = l === 0 ? 1 : 0.06 + l * 0.035;
             ctx.beginPath();
-            const pts = 100;
-            for (let i = 0; i <= pts; i++) {
-              const angle = (i / pts) * Math.PI * 2;
-              const wobble1 = Math.sin(angle * 3 + t * 1.2 + l) * (4 + l * 2);
-              const wobble2 = Math.sin(angle * 5 - t * 0.8 + l * 2) * (3 + l * 1.2);
-              const wobble3 = Math.cos(angle * 7 + t * 1.5) * (2 + l * 0.7);
-              const pulse = Math.sin(t * 1.5 + l * 0.5) * 3;
-              const r = layerR + wobble1 + wobble2 + wobble3 + pulse;
-              const rotatedAngle = angle + t * 0.12 + l * 0.04;
-              const x = center + Math.cos(rotatedAngle) * r;
-              const y = center + Math.sin(rotatedAngle) * r;
+            for (let i = 0; i <= 100; i++) {
+              const angle = (i / 100) * Math.PI * 2;
+              const w1 = Math.sin(angle * 3 + t * 1.2 + l) * (4 + l * 2);
+              const w2 = Math.sin(angle * 5 - t * 0.8 + l * 2) * (3 + l * 1.2);
+              const w3 = Math.cos(angle * 7 + t * 1.5) * (2 + l * 0.7);
+              const p = Math.sin(t * 1.5 + l * 0.5) * 3;
+              const r = layerR + w1 + w2 + w3 + p;
+              const ra = angle + t * 0.12 + l * 0.04;
+              const x = center + Math.cos(ra) * r;
+              const y = center + Math.sin(ra) * r;
               if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
             }
             ctx.closePath();
@@ -112,36 +153,28 @@
               grad.addColorStop(1, "#2d004a");
               ctx.fillStyle = grad;
             } else {
-              ctx.fillStyle = `rgba(${20 + l * 12}, ${0}, ${40 + l * 18}, ${alpha})`;
+              ctx.fillStyle = 'rgba(' + (20+l*12) + ',0,' + (40+l*18) + ',' + alpha + ')';
             }
             ctx.fill();
           }
-
-          // accretion ring
           ctx.save();
           ctx.translate(center, center);
           ctx.rotate(t * 0.25);
           for (let i = 0; i < 80; i++) {
             const a = (i / 80) * Math.PI * 2;
-            const ringR = radius * 1.1 + Math.sin(a * 4 + t * 2) * 4;
-            const x = Math.cos(a) * ringR;
-            const y = Math.sin(a) * ringR * 0.3;
-            const bright = 0.15 + Math.sin(a * 3 + t * 4) * 0.12;
+            const rr = radius * 1.1 + Math.sin(a * 4 + t * 2) * 4;
             ctx.beginPath();
-            ctx.arc(x, y, 1.8 + Math.sin(a + t) * 0.8, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(${130 + i}, ${40 + i * 0.5}, ${200}, ${bright})`;
+            ctx.arc(Math.cos(a) * rr, Math.sin(a) * rr * 0.3, 1.8 + Math.sin(a + t) * 0.8, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(' + (130+i) + ',' + Math.floor(40+i*0.5) + ',200,' + (0.15+Math.sin(a*3+t*4)*0.12) + ')';
             ctx.fill();
           }
           ctx.restore();
-
-          // outer glow
-          const glowGrad = ctx.createRadialGradient(center, center, radius * 0.7, center, center, radius * 2);
-          glowGrad.addColorStop(0, "rgba(80, 0, 140, 0)");
-          glowGrad.addColorStop(0.4, "rgba(80, 0, 140, 0.05)");
-          glowGrad.addColorStop(1, "rgba(80, 0, 140, 0)");
-          ctx.fillStyle = glowGrad;
+          const gg = ctx.createRadialGradient(center, center, radius * 0.7, center, center, radius * 2);
+          gg.addColorStop(0, "rgba(80,0,140,0)");
+          gg.addColorStop(0.4, "rgba(80,0,140,0.05)");
+          gg.addColorStop(1, "rgba(80,0,140,0)");
+          ctx.fillStyle = gg;
           ctx.fillRect(0, 0, size, size);
-
           animRef.current = requestAnimationFrame(draw);
         };
         draw();
@@ -161,11 +194,11 @@
             { x: 45, y: 80, r: 200, color: "rgba(30,100,220,0.2)", dur: 20 },
           ].map((b, i) => (
             <div key={i} style={{
-              position: "absolute", left: `${b.x}%`, top: `${b.y}%`,
+              position: "absolute", left: b.x + '%', top: b.y + '%',
               width: b.r * 2, height: b.r * 2, borderRadius: "50%",
               background: b.color, filter: "blur(80px)",
               transform: "translate(-50%,-50%)",
-              animation: `blobFloat${i} ${b.dur}s ease-in-out infinite alternate`,
+              animation: 'blobFloat' + i + ' ' + b.dur + 's ease-in-out infinite alternate',
             }} />
           ))}
           <style>{`
@@ -177,28 +210,86 @@
       );
     }
 
-    /* ─── MAIN GAME ─── */
+    /* ═══════════════════════════════════════════
+       SCOREBOARD PANEL
+       ═══════════════════════════════════════════ */
+    function Scoreboard({ onClose }) {
+      const [scores, setScores] = useState([]);
+      const [loading, setLoading] = useState(true);
+
+      useEffect(() => {
+        loadScoreboard().then(s => { setScores(s); setLoading(false); });
+      }, []);
+
+      return (
+        <div style={{
+          position: "absolute", inset: 0, zIndex: 60,
+          background: "rgba(8,6,14,0.95)",
+          display: "flex", flexDirection: "column", alignItems: "center",
+          padding: "max(16px, 3vh) 5vw", overflow: "auto",
+        }}>
+          <div style={{ fontSize: "clamp(20px,5vw,32px)", fontWeight: 700, color: "#a855f7", letterSpacing: 4, marginBottom: "2vh" }}>VOID LEDGER</div>
+          {loading ? (
+            <div style={{ color: "#555", fontSize: 14 }}>Loading...</div>
+          ) : scores.length === 0 ? (
+            <div style={{ color: "#555", fontSize: "clamp(11px,2.5vw,14px)", marginTop: "3vh" }}>No scores yet. Be the first to feed the void.</div>
+          ) : (
+            <div style={{ width: "100%", maxWidth: 440 }}>
+              {scores.slice(0, 20).map((e, i) => (
+                <div key={i} style={{
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                  padding: "8px 0", borderBottom: "1px solid rgba(168,85,247,0.1)",
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <span style={{ color: i < 3 ? "#a855f7" : "#555", fontSize: "clamp(10px,2vw,13px)", fontWeight: 700, width: 24, textAlign: "right" }}>{i + 1}</span>
+                    <span style={{ color: "#fff", fontSize: "clamp(11px,2.5vw,14px)" }}>{e.n}</span>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ color: "#fff", fontSize: "clamp(12px,2.5vw,16px)", fontWeight: 700 }}>{(e.s || 0).toLocaleString()}</div>
+                    <div style={{ color: "#555", fontSize: "clamp(8px,1.5vw,10px)" }}>{e.l}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <button onClick={onClose} style={{
+            marginTop: "3vh", background: "none", border: "1px solid rgba(168,85,247,0.4)",
+            color: "#a855f7", padding: "10px 30px", fontSize: "clamp(11px,2.5vw,14px)",
+            letterSpacing: 3, cursor: "pointer", borderRadius: 0,
+            textTransform: "uppercase", fontFamily: "'Space Mono',monospace",
+          }}>Back</button>
+        </div>
+      );
+    }
+
+    /* ═══════════════════════════════════════════
+       MAIN GAME
+       ═══════════════════════════════════════════ */
     function TheHole() {
       const containerRef = useRef(null);
       const [dims, setDims] = useState({ w: 400, h: 700 });
       const [gameState, setGameState] = useState("menu");
-      const [level, setLevel] = useState(1);
+      const [totalRound, setTotalRound] = useState(0);
       const [score, setScore] = useState(0);
       const [dotAngle, setDotAngle] = useState(0);
       const [lineTarget, setLineTarget] = useState(null);
       const [lineProgress, setLineProgress] = useState(0);
       const [dragPath, setDragPath] = useState([]);
       const [isDragging, setIsDragging] = useState(false);
-      const [timeLeft, setTimeLeft] = useState(BASE_TIME);
+      const [timeLeft, setTimeLeft] = useState(3);
       const [showLine, setShowLine] = useState(false);
       const [holeRadius, setHoleRadius] = useState(35);
       const [feedback, setFeedback] = useState("");
       const [dotPulse, setDotPulse] = useState(0);
       const [shakeLevel, setShakeLevel] = useState(0);
+      const [attemptDone, setAttemptDone] = useState(false);
+      const [playerName, setPlayerName] = useState("");
+      const [submitStatus, setSubmitStatus] = useState("");
 
       const timerRef = useRef(null);
       const lineAnimRef = useRef(null);
       const levelStartTime = useRef(0);
+      const internalScore = useRef(0);
 
       useEffect(() => {
         const measure = () => {
@@ -221,8 +312,11 @@
       const cy = dims.h / 2;
       const circleR = Math.min(dims.w, dims.h) * 0.12;
       const holeCanvasSize = Math.ceil(holeRadius * 6);
-      const maxTime = Math.max(0.6, BASE_TIME - (level - 1) * TIME_DECAY);
-      const lineLen = LINE_LENGTH_BASE + level * 8;
+
+      const lv = calcLevel(totalRound);
+      const multiplier = getMultiplier(lv.tier);
+      const maxTime = getMaxTime(lv.set, lv.tier);
+      const lineLen = LINE_LENGTH_BASE + (lv.set + lv.tier * 10) * 6;
 
       const startLevel = useCallback(() => {
         const angle = Math.random() * Math.PI * 2;
@@ -232,14 +326,23 @@
         setDragPath([]);
         setShowLine(false);
         setIsDragging(false);
+        setAttemptDone(false);
         setTimeLeft(maxTime);
         setFeedback("");
         setShakeLevel(0);
         setGameState("playing");
       }, [lineLen, maxTime]);
 
-      const startGame = () => { setLevel(1); setScore(0); setHoleRadius(35); startLevel(); };
+      const startGame = () => {
+        setTotalRound(0);
+        setScore(0);
+        internalScore.current = 0;
+        setHoleRadius(35);
+        setSubmitStatus("");
+        startLevel();
+      };
 
+      // countdown
       useEffect(() => {
         if (gameState !== "playing" || !showLine) return;
         const start = Date.now();
@@ -251,12 +354,13 @@
           else if (remaining <= 1000) setShakeLevel(1);
           if (remaining <= 0) {
             clearInterval(timerRef.current);
+            setAttemptDone(true);
             setFeedback("TIME'S UP");
-            setGameState(level >= TOTAL_LEVELS ? "gameover" : "fail");
+            setGameState("gameover");
           }
         }, 30);
         return () => clearInterval(timerRef.current);
-      }, [gameState, showLine, timeLeft, level]);
+      }, [gameState, showLine, timeLeft]);
 
       const dotX = cx + Math.cos(dotAngle) * circleR;
       const dotY = cy + Math.sin(dotAngle) * circleR;
@@ -266,8 +370,53 @@
         lineEndY = dotY + Math.sin(lineTarget.angle) * lineTarget.length;
       }
 
+      const evaluateDrag = useCallback((path) => {
+        if (path.length < 3) return { passed: false, reason: "DRAG FURTHER!" };
+        const totalLineLen = dist(dotX, dotY, lineEndX, lineEndY);
+        if (totalLineLen < 1) return { passed: false, reason: "ERROR" };
+        const ldx = (lineEndX - dotX) / totalLineLen;
+        const ldy = (lineEndY - dotY) / totalLineLen;
+        let td = 0, mp = 0;
+        path.forEach((p) => {
+          const dx = p.x - dotX, dy = p.y - dotY;
+          const proj = dx * ldx + dy * ldy;
+          const pc = clamp(proj, 0, totalLineLen);
+          td += dist(p.x, p.y, dotX + ldx * pc, dotY + ldy * pc);
+          mp = Math.max(mp, proj);
+        });
+        const avgDist = td / path.length;
+        const coverage = clamp(mp / totalLineLen, 0, 1);
+        const accuracy = Math.max(0, 1 - avgDist / 60);
+        return { passed: coverage > 0.5 && accuracy > 0.3, coverage, accuracy };
+      }, [dotX, dotY, lineEndX, lineEndY]);
+
+      const finishAttempt = useCallback((path) => {
+        clearInterval(timerRef.current);
+        cancelAnimationFrame(lineAnimRef.current);
+        setAttemptDone(true);
+        setIsDragging(false);
+
+        const result = evaluateDrag(path);
+
+        if (result.passed) {
+          const elapsed = (Date.now() - levelStartTime.current) / 1000;
+          const speedBonus = Math.max(0, 1 - elapsed / (maxTime * 1.2));
+          const baseScore = Math.round(result.accuracy * 500 + speedBonus * 300 + result.coverage * 200);
+          const finalScore = baseScore * multiplier;
+          internalScore.current += finalScore;
+          setScore(internalScore.current);
+          setFeedback(multiplier > 1 ? '+' + finalScore + ' (' + multiplier + 'x)' : '+' + finalScore);
+          setHoleRadius((prev) => prev + 6 + lv.set * 1.5);
+          setGameState("success");
+          setTimeout(() => setTotalRound((p) => p + 1), 100);
+        } else {
+          setFeedback(result.reason || (result.coverage <= 0.5 ? "TRACE FURTHER" : "TOO SLOPPY"));
+          setGameState("gameover");
+        }
+      }, [evaluateDrag, maxTime, multiplier, lv.set]);
+
       const handlePointerDown = (e) => {
-        if (gameState !== "playing") return;
+        if (gameState !== "playing" || attemptDone) return;
         const rect = containerRef.current.getBoundingClientRect();
         const px = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
         const py = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
@@ -288,58 +437,37 @@
       };
 
       const handlePointerMove = (e) => {
-        if (!isDragging || gameState !== "playing") return;
+        if (!isDragging || gameState !== "playing" || attemptDone) return;
         const rect = containerRef.current.getBoundingClientRect();
         const px = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
         const py = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
         setDragPath((prev) => [...prev, { x: px, y: py }]);
       };
 
+      // CRITICAL: finger lift = immediate evaluation, no second tap allowed
       const handlePointerUp = () => {
-        if (!isDragging || gameState !== "playing") return;
-        setIsDragging(false);
-        clearInterval(timerRef.current);
-        cancelAnimationFrame(lineAnimRef.current);
-
-        if (dragPath.length < 3) { setFeedback("DRAG FURTHER!"); setGameState("fail"); return; }
-
-        const totalLineLen = dist(dotX, dotY, lineEndX, lineEndY);
-        const lineDirX = (lineEndX - dotX) / totalLineLen;
-        const lineDirY = (lineEndY - dotY) / totalLineLen;
-        let totalDist = 0, maxProjection = 0;
-        dragPath.forEach((p) => {
-          const dx = p.x - dotX, dy = p.y - dotY;
-          const proj = dx * lineDirX + dy * lineDirY;
-          const pc = clamp(proj, 0, totalLineLen);
-          totalDist += dist(p.x, p.y, dotX + lineDirX * pc, dotY + lineDirY * pc);
-          maxProjection = Math.max(maxProjection, proj);
-        });
-
-        const avgDist = totalDist / dragPath.length;
-        const coverage = clamp(maxProjection / totalLineLen, 0, 1);
-        const accuracy = Math.max(0, 1 - avgDist / 60);
-        const elapsed = (Date.now() - levelStartTime.current) / 1000;
-        const speedBonus = Math.max(0, 1 - elapsed / (maxTime * 1.2));
-        const passed = coverage > 0.5 && accuracy > 0.3;
-
-        if (passed) {
-          const levelScore = Math.round((accuracy * 500 + speedBonus * 300 + coverage * 200) * (level * 0.5 + 0.5));
-          setScore((prev) => prev + levelScore);
-          setFeedback("+" + levelScore);
-          setHoleRadius((prev) => prev + 10 + level * 3);
-          if (level >= TOTAL_LEVELS) setGameState("win");
-          else { setGameState("success"); setTimeout(() => setLevel((p) => p + 1), 100); }
-        } else {
-          setFeedback(coverage <= 0.5 ? "TRACE FURTHER" : "TOO SLOPPY");
-          setGameState("fail");
-        }
+        if (!isDragging || gameState !== "playing" || attemptDone) return;
+        finishAttempt(dragPath);
       };
 
-      const retryLevel = () => startLevel();
-
       useEffect(() => {
-        if (gameState === "success") { const t = setTimeout(() => startLevel(), 800); return () => clearTimeout(t); }
-      }, [gameState, level, startLevel]);
+        if (gameState === "success") {
+          const t = setTimeout(() => startLevel(), 800);
+          return () => clearTimeout(t);
+        }
+      }, [gameState, totalRound, startLevel]);
+
+      const handleSubmitScore = async () => {
+        const name = playerName.trim() || "ANON";
+        setSubmitStatus("Submitting...");
+        const result = await submitScore(name, score, levelString(lv), totalRound);
+        if (result.error) {
+          setSubmitStatus("Failed: " + result.error);
+        } else {
+          setSubmitStatus(result.rank ? "Rank #" + result.rank + "!" : "Submitted!");
+          setTimeout(() => setGameState("scores"), 1200);
+        }
+      };
 
       const timerWidth = showLine ? (timeLeft / maxTime) * 100 : 100;
       const timerColor = timeLeft < 0.8 ? "#ff2040" : timeLeft < 1.5 ? "#ffaa00" : "#a855f7";
@@ -365,26 +493,21 @@
             @keyframes shake2{0%,100%{transform:translateX(0)}20%{transform:translateX(-4px)}40%{transform:translateX(4px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
           `}</style>
 
-          {/* LAYER 1 — BLACK HOLE behind everything */}
+          {/* BLACK HOLE (z:1) */}
           <div style={{
             position: "absolute",
-            left: cx - holeCanvasSize / 2,
-            top: cy - holeCanvasSize / 2,
-            width: holeCanvasSize,
-            height: holeCanvasSize,
+            left: cx - holeCanvasSize / 2, top: cy - holeCanvasSize / 2,
+            width: holeCanvasSize, height: holeCanvasSize,
             zIndex: 1, pointerEvents: "none",
           }}>
             <BlackHole size={holeCanvasSize} radius={holeRadius} />
           </div>
 
-          {/* LAYER 2 — GAME INTERFACE on top */}
-          <svg
-            style={{ position: "absolute", inset: 0, zIndex: 10, pointerEvents: "none" }}
-            width={dims.w} height={dims.h}
-          >
+          {/* GAME INTERFACE (z:10) */}
+          <svg style={{ position: "absolute", inset: 0, zIndex: 10, pointerEvents: "none" }}
+            width={dims.w} height={dims.h}>
             <circle cx={cx} cy={cy} r={circleR} fill="none" stroke="rgba(168,85,247,0.35)" strokeWidth={2} />
             <circle cx={cx} cy={cy} r={circleR} fill="none" stroke="rgba(168,85,247,0.1)" strokeWidth={circleR * 0.4} strokeDasharray="2 8" />
-
             {showLine && lineTarget && (
               <line x1={dotX} y1={dotY}
                 x2={lerp(dotX, lineEndX, lineProgress)} y2={lerp(dotY, lineEndY, lineProgress)}
@@ -395,7 +518,6 @@
               <circle cx={lineEndX} cy={lineEndY} r={5} fill="rgba(168,85,247,0.6)"
                 style={{ filter: "drop-shadow(0 0 8px rgba(168,85,247,0.8))" }} />
             )}
-
             {dragPath.length > 1 && (
               <polyline points={dragPath.map((p) => p.x + "," + p.y).join(" ")}
                 fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth={2.5}
@@ -404,8 +526,8 @@
             )}
           </svg>
 
-          {/* Red pulsing dot */}
-          {gameState === "playing" && !showLine && (
+          {/* Red pulsing dot (z:15) */}
+          {gameState === "playing" && !showLine && !attemptDone && (
             <div style={{
               position: "absolute", left: dotX, top: dotY,
               width: 18 + dotPulse * 6, height: 18 + dotPulse * 6,
@@ -416,19 +538,20 @@
             }} />
           )}
 
-          {/* HUD + Timer stacked together */}
+          {/* HUD (z:20) */}
           <div style={{
             position: "absolute", top: 0, left: 0, right: 0,
-            padding: "max(12px, 2vh) 5vw 0",
-            zIndex: 20,
+            padding: "max(12px, 2vh) 5vw 0", zIndex: 20,
             animation: shakeLevel === 2 ? "shake2 0.15s infinite" : shakeLevel === 1 ? "shake1 0.2s infinite" : "none",
           }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div style={{ color: "#a855f7", fontSize: "clamp(11px,2.5vw,16px)", letterSpacing: 2, opacity: 0.8 }}>
-                LVL <span style={{ color: "#fff", fontWeight: 700 }}>{level}</span>
-                <span style={{ color: "#555", margin: "0 6px" }}>/</span><span style={{ color: "#555" }}>{TOTAL_LEVELS}</span>
+                <span style={{ color: "#fff", fontWeight: 700 }}>{levelString(lv)}</span>
+                {multiplier > 1 && (
+                  <span style={{ color: "#ff3050", marginLeft: 10, fontSize: "clamp(9px,2vw,12px)" }}>{multiplier}x</span>
+                )}
               </div>
-              <div style={{ color: "#fff", fontSize: "clamp(14px,3.5vw,22px)", fontWeight: 700, letterSpacing: 3 }}>{score}</div>
+              <div style={{ color: "#fff", fontSize: "clamp(14px,3.5vw,22px)", fontWeight: 700, letterSpacing: 3 }}>{score.toLocaleString()}</div>
             </div>
             <div style={{
               marginTop: 8, height: 3, width: "100%",
@@ -444,50 +567,81 @@
             </div>
           </div>
 
-          {/* Feedback */}
-          {feedback && (gameState === "success" || gameState === "fail" || gameState === "win" || gameState === "gameover") && (
-            <div key={feedback + level} style={{
+          {/* Feedback float */}
+          {feedback && (gameState === "success" || gameState === "gameover") && (
+            <div key={feedback + totalRound} style={{
               position: "absolute", left: "50%", top: cy - circleR - 50,
               transform: "translateX(-50%)",
-              color: (gameState === "success" || gameState === "win") ? "#a855f7" : "#ff3050",
+              color: gameState === "success" ? "#a855f7" : "#ff3050",
               fontSize: "clamp(18px,5vw,32px)", fontWeight: 700, letterSpacing: 3, zIndex: 30,
               animation: "scoreFloat 1.2s ease-out forwards", pointerEvents: "none",
-              textShadow: (gameState === "success" || gameState === "win")
+              textShadow: gameState === "success"
                 ? "0 0 20px rgba(168,85,247,0.8)" : "0 0 20px rgba(255,48,80,0.8)",
             }}>{feedback}</div>
           )}
 
-          {/* Overlays */}
-          {(gameState === "menu" || gameState === "fail" || gameState === "gameover" || gameState === "win") && (
+          {/* SCOREBOARD */}
+          {gameState === "scores" && (
+            <Scoreboard onClose={() => setGameState("menu")} />
+          )}
+
+          {/* OVERLAYS */}
+          {(gameState === "menu" || gameState === "gameover" || gameState === "submit") && (
             <div style={{
               position: "absolute", inset: 0, display: "flex", flexDirection: "column",
               alignItems: "center", justifyContent: "center", zIndex: 50,
-              background: gameState === "menu" ? "rgba(8,6,14,0.85)" : "rgba(8,6,14,0.7)",
+              background: gameState === "menu" ? "rgba(8,6,14,0.85)" : "rgba(8,6,14,0.75)",
               animation: "fadeInUp 0.5s ease-out",
             }}>
               {gameState === "menu" && (<>
                 <div style={{ fontSize: "clamp(36px,10vw,72px)", fontWeight: 700, color: "#fff", letterSpacing: 8, marginBottom: 8, textShadow: "0 0 40px rgba(168,85,247,0.5)" }}>THE HOLE</div>
                 <div style={{ fontSize: "clamp(10px,2.5vw,14px)", color: "rgba(168,85,247,0.5)", letterSpacing: 6, marginBottom: "6vh", textTransform: "uppercase" }}>feed the void</div>
-                <button onClick={startGame} style={{ background: "none", border: "1px solid rgba(168,85,247,0.4)", color: "#a855f7", padding: "12px 40px", fontSize: "clamp(12px,3vw,16px)", letterSpacing: 4, cursor: "pointer", borderRadius: 0, transition: "all 0.3s", textTransform: "uppercase", fontFamily: "'Space Mono',monospace" }}
-                  onMouseEnter={(e) => { e.target.style.background = "rgba(168,85,247,0.15)"; e.target.style.borderColor = "rgba(168,85,247,0.8)"; }}
-                  onMouseLeave={(e) => { e.target.style.background = "none"; e.target.style.borderColor = "rgba(168,85,247,0.4)"; }}>Begin</button>
+                <div style={{ display: "flex", gap: 16, flexWrap: "wrap", justifyContent: "center" }}>
+                  <button onClick={startGame} style={{ background: "none", border: "1px solid rgba(168,85,247,0.4)", color: "#a855f7", padding: "12px 40px", fontSize: "clamp(12px,3vw,16px)", letterSpacing: 4, cursor: "pointer", borderRadius: 0, transition: "all 0.3s", textTransform: "uppercase", fontFamily: "'Space Mono',monospace" }}
+                    onMouseEnter={(e) => { e.target.style.background = "rgba(168,85,247,0.15)"; e.target.style.borderColor = "rgba(168,85,247,0.8)"; }}
+                    onMouseLeave={(e) => { e.target.style.background = "none"; e.target.style.borderColor = "rgba(168,85,247,0.4)"; }}>Begin</button>
+                  <button onClick={() => setGameState("scores")} style={{ background: "none", border: "1px solid rgba(168,85,247,0.2)", color: "rgba(168,85,247,0.6)", padding: "12px 30px", fontSize: "clamp(11px,2.5vw,14px)", letterSpacing: 3, cursor: "pointer", borderRadius: 0, textTransform: "uppercase", fontFamily: "'Space Mono',monospace" }}>Scores</button>
+                </div>
                 <div style={{ marginTop: "4vh", color: "rgba(255,255,255,0.2)", fontSize: "clamp(9px,2vw,11px)", textAlign: "center", lineHeight: 1.8, letterSpacing: 1, maxWidth: "80%" }}>tap the red dot · trace the line · grow the hole</div>
               </>)}
-              {gameState === "win" && (<>
-                <div style={{ fontSize: "clamp(24px,7vw,48px)", fontWeight: 700, color: "#a855f7", letterSpacing: 6, marginBottom: 16, textShadow: "0 0 30px rgba(168,85,247,0.6)" }}>VOID COMPLETE</div>
-                <div style={{ fontSize: "clamp(28px,8vw,56px)", fontWeight: 700, color: "#fff", marginBottom: 8 }}>{score}</div>
-                <div style={{ fontSize: "clamp(10px,2.5vw,13px)", color: "rgba(255,255,255,0.3)", letterSpacing: 4, marginBottom: "5vh" }}>FINAL SCORE</div>
-                <button onClick={startGame} style={{ background: "none", border: "1px solid rgba(168,85,247,0.4)", color: "#a855f7", padding: "12px 40px", fontSize: "clamp(12px,3vw,16px)", letterSpacing: 4, cursor: "pointer", borderRadius: 0, textTransform: "uppercase", fontFamily: "'Space Mono',monospace" }}>Play Again</button>
-              </>)}
+
               {gameState === "gameover" && (<>
-                <div style={{ fontSize: "clamp(20px,6vw,40px)", fontWeight: 700, color: "#ff3050", letterSpacing: 4, marginBottom: 16 }}>CONSUMED</div>
-                <div style={{ fontSize: "clamp(22px,6vw,44px)", fontWeight: 700, color: "#fff", marginBottom: 8 }}>{score}</div>
-                <div style={{ fontSize: "clamp(10px,2.5vw,13px)", color: "rgba(255,255,255,0.3)", letterSpacing: 4, marginBottom: "5vh" }}>LEVEL {level} · FINAL SCORE</div>
-                <button onClick={startGame} style={{ background: "none", border: "1px solid rgba(255,48,80,0.4)", color: "#ff3050", padding: "12px 40px", fontSize: "clamp(12px,3vw,16px)", letterSpacing: 4, cursor: "pointer", borderRadius: 0, textTransform: "uppercase", fontFamily: "'Space Mono',monospace" }}>Retry</button>
+                <div style={{ fontSize: "clamp(20px,6vw,40px)", fontWeight: 700, color: "#ff3050", letterSpacing: 4, marginBottom: 16 }}>{feedback || "CONSUMED"}</div>
+                <div style={{ fontSize: "clamp(28px,8vw,56px)", fontWeight: 700, color: "#fff", marginBottom: 8 }}>{score.toLocaleString()}</div>
+                <div style={{ fontSize: "clamp(10px,2.5vw,13px)", color: "rgba(255,255,255,0.3)", letterSpacing: 3, marginBottom: "3vh" }}>
+                  {levelString(lv)} · FINAL SCORE
+                </div>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "center" }}>
+                  <button onClick={() => setGameState("submit")} style={{ background: "none", border: "1px solid rgba(168,85,247,0.4)", color: "#a855f7", padding: "10px 30px", fontSize: "clamp(11px,2.5vw,14px)", letterSpacing: 3, cursor: "pointer", borderRadius: 0, textTransform: "uppercase", fontFamily: "'Space Mono',monospace" }}>Submit Score</button>
+                  <button onClick={startGame} style={{ background: "none", border: "1px solid rgba(255,48,80,0.3)", color: "#ff3050", padding: "10px 30px", fontSize: "clamp(11px,2.5vw,14px)", letterSpacing: 3, cursor: "pointer", borderRadius: 0, textTransform: "uppercase", fontFamily: "'Space Mono',monospace" }}>Retry</button>
+                </div>
               </>)}
-              {gameState === "fail" && (<>
-                <div style={{ fontSize: "clamp(16px,4vw,28px)", fontWeight: 700, color: "#ff3050", letterSpacing: 3, marginBottom: 20 }}>{feedback || "MISSED"}</div>
-                <button onClick={retryLevel} style={{ background: "none", border: "1px solid rgba(255,48,80,0.4)", color: "#ff3050", padding: "10px 30px", fontSize: "clamp(11px,2.5vw,14px)", letterSpacing: 3, cursor: "pointer", borderRadius: 0, textTransform: "uppercase", fontFamily: "'Space Mono',monospace" }}>Retry</button>
+
+              {gameState === "submit" && (<>
+                <div style={{ fontSize: "clamp(16px,4vw,24px)", fontWeight: 700, color: "#a855f7", letterSpacing: 4, marginBottom: 20 }}>ENTER NAME</div>
+                <input
+                  type="text" maxLength={16} value={playerName}
+                  onChange={(e) => setPlayerName(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleSubmitScore(); }}
+                  placeholder="ANON" autoFocus
+                  style={{
+                    background: "rgba(255,255,255,0.05)", border: "1px solid rgba(168,85,247,0.3)",
+                    color: "#fff", padding: "10px 20px", fontSize: "clamp(14px,3vw,18px)",
+                    letterSpacing: 3, textAlign: "center", outline: "none",
+                    fontFamily: "'Space Mono',monospace", width: "min(280px, 70vw)", borderRadius: 0,
+                  }}
+                />
+                <div style={{ fontSize: "clamp(22px,6vw,40px)", fontWeight: 700, color: "#fff", margin: "16px 0 4px" }}>{score.toLocaleString()}</div>
+                <div style={{ fontSize: "clamp(9px,2vw,11px)", color: "#555", letterSpacing: 2, marginBottom: 20 }}>{levelString(lv)}</div>
+                {submitStatus && (
+                  <div style={{ fontSize: "clamp(10px,2vw,13px)", color: submitStatus.startsWith("Rank") ? "#a855f7" : "#555", letterSpacing: 2, marginBottom: 12 }}>{submitStatus}</div>
+                )}
+                <button onClick={handleSubmitScore} style={{
+                  background: "none", border: "1px solid rgba(168,85,247,0.4)",
+                  color: "#a855f7", padding: "10px 40px", fontSize: "clamp(12px,3vw,16px)",
+                  letterSpacing: 4, cursor: "pointer", borderRadius: 0,
+                  textTransform: "uppercase", fontFamily: "'Space Mono',monospace",
+                }}>Submit</button>
               </>)}
             </div>
           )}
@@ -498,7 +652,7 @@
             textAlign: "center", color: "#fff",
             fontSize: "clamp(8px, 1.5vw, 10px)", letterSpacing: 2,
             zIndex: 2, pointerEvents: "none",
-          }}>v0.0.1a</div>
+          }}>v0.0.2a</div>
         </div>
       );
     }
