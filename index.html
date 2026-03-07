@@ -416,32 +416,33 @@
             }} />
           )}
 
-          {/* HUD */}
+          {/* HUD + Timer stacked together */}
           <div style={{
             position: "absolute", top: 0, left: 0, right: 0,
-            padding: "3vh 5vw", display: "flex", justifyContent: "space-between",
-            alignItems: "center", zIndex: 20,
+            padding: "max(12px, 2vh) 5vw 0",
+            zIndex: 20,
             animation: shakeLevel === 2 ? "shake2 0.15s infinite" : shakeLevel === 1 ? "shake1 0.2s infinite" : "none",
           }}>
-            <div style={{ color: "#a855f7", fontSize: "clamp(11px,2.5vw,16px)", letterSpacing: 2, opacity: 0.8 }}>
-              LVL <span style={{ color: "#fff", fontWeight: 700 }}>{level}</span>
-              <span style={{ color: "#555", margin: "0 6px" }}>/</span><span style={{ color: "#555" }}>{TOTAL_LEVELS}</span>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ color: "#a855f7", fontSize: "clamp(11px,2.5vw,16px)", letterSpacing: 2, opacity: 0.8 }}>
+                LVL <span style={{ color: "#fff", fontWeight: 700 }}>{level}</span>
+                <span style={{ color: "#555", margin: "0 6px" }}>/</span><span style={{ color: "#555" }}>{TOTAL_LEVELS}</span>
+              </div>
+              <div style={{ color: "#fff", fontSize: "clamp(14px,3.5vw,22px)", fontWeight: 700, letterSpacing: 3 }}>{score}</div>
             </div>
-            <div style={{ color: "#fff", fontSize: "clamp(14px,3.5vw,22px)", fontWeight: 700, letterSpacing: 3 }}>{score}</div>
-          </div>
-
-          {gameState === "playing" && (
             <div style={{
-              position: "absolute", top: "7vh", left: "5vw", right: "5vw", height: 3,
-              background: "rgba(255,255,255,0.06)", borderRadius: 2, zIndex: 20, overflow: "hidden",
+              marginTop: 8, height: 3, width: "100%",
+              background: "rgba(255,255,255,0.06)", borderRadius: 2, overflow: "hidden",
             }}>
-              <div style={{
-                height: "100%", width: timerWidth + "%", background: timerColor,
-                borderRadius: 2, transition: "width 0.05s linear, background 0.3s",
-                boxShadow: "0 0 10px " + timerColor,
-              }} />
+              {gameState === "playing" && (
+                <div style={{
+                  height: "100%", width: timerWidth + "%", background: timerColor,
+                  borderRadius: 2, transition: "width 0.05s linear, background 0.3s",
+                  boxShadow: "0 0 10px " + timerColor,
+                }} />
+              )}
             </div>
-          )}
+          </div>
 
           {/* Feedback */}
           {feedback && (gameState === "success" || gameState === "fail" || gameState === "win" || gameState === "gameover") && (
