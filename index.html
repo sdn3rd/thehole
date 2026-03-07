@@ -358,79 +358,93 @@
     }
 
     /* ═══════════════════════════════════════════
-       SCOREBOARD — network-first, localStorage fallback
+       SCOREBOARD — connectivity check at game start locks mode for session
        ═══════════════════════════════════════════ */
-    let _online = null; // null = unknown, true/false after first attempt
+    let _online = null; // null = unchecked, true/false = locked for session
+
+    async function checkConnectivity() {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 2000);
+        const res = await fetch('/api/scores', { signal: controller.signal });
+        clearTimeout(timeout);
+        _online = res.ok;
+      } catch {
+        _online = false;
+      }
+      return _online;
+    }
 
     function getLocalScores() {
       try {
         const raw = localStorage.getItem('hole-scores');
-        return raw ? JSON.parse(raw) : [];
+        return raw ? JSON.parse(raw).slice(0, 10) : [];
       } catch { return []; }
     }
 
     function saveLocalScores(scores) {
       try {
-        localStorage.setItem('hole-scores', JSON.stringify(scores.slice(0, 50)));
+        localStorage.setItem('hole-scores', JSON.stringify(scores.slice(0, 10)));
       } catch {}
     }
 
     async function loadScoreboard() {
-      // try network first
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 3000);
-        const res = await fetch('/api/scores', { signal: controller.signal });
-        clearTimeout(timeout);
-        if (res.ok) {
-          const data = await res.json();
-          _online = true;
-          // cache remotely fetched scores locally too
-          if (data.length > 0) saveLocalScores(data);
-          return { scores: data, source: 'online' };
-        }
-      } catch {}
-      // fallback to local
-      _online = false;
+      // if not checked yet, check now
+      if (_online === null) await checkConnectivity();
+
+      if (_online) {
+        try {
+          const res = await fetch('/api/scores');
+          if (res.ok) {
+            const data = await res.json();
+            if (data.length > 0) saveLocalScores(data);
+            return { scores: data.slice(0, 10), source: 'online' };
+          }
+        } catch {}
+      }
       return { scores: getLocalScores(), source: 'local' };
     }
 
-    async function submitScore(name, score, levelStr, totalRounds) {
-      const entry = {
+    // Submit sends raw round data — server recalculates score
+    async function submitGameData(name, roundLog, clientScore) {
+      const localEntry = {
         n: (name || 'ANON').slice(0, 16),
-        s: score,
-        l: levelStr,
-        r: totalRounds,
+        s: clientScore,
+        l: roundLog.length > 0 ? '~' + roundLog.length + ' rounds' : '0',
         t: Date.now(),
       };
-
-      // always save locally first
       const local = getLocalScores();
-      local.push(entry);
+      local.push(localEntry);
       local.sort((a, b) => b.s - a.s);
-      saveLocalScores(local);
+      saveLocalScores(local.slice(0, 10));
 
-      // try network
+      // skip network entirely if offline
+      if (!_online) {
+        const rank = local.findIndex(e => e.t === localEntry.t) + 1;
+        return { success: true, score: clientScore, rank, source: 'local' };
+      }
+
       try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 3000);
-        const res = await fetch('/api/scores', {
+        const timeout = setTimeout(() => controller.abort(), 8000);
+        const res = await fetch('/api/submit', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: entry.n, score: score, level: levelStr, rounds: totalRounds }),
+          body: JSON.stringify({
+            name: (name || 'ANON').slice(0, 16),
+            rounds: roundLog,
+          }),
           signal: controller.signal,
         });
         clearTimeout(timeout);
         if (res.ok) {
           const data = await res.json();
-          _online = true;
           return { ...data, source: 'online' };
         }
       } catch {}
 
-      _online = false;
-      const rank = local.findIndex(e => e.t === entry.t) + 1;
-      return { success: true, rank: rank, source: 'local' };
+      const rank = local.findIndex(e => e.t === localEntry.t) + 1;
+      return { success: true, score: clientScore, rank, source: 'local' };
     }
 
     /* ═══════════════════════════════════════════
@@ -571,7 +585,7 @@
             <div style={{ color: "#555", fontSize: "clamp(11px,2.5vw,14px)", marginTop: "3vh" }}>No scores yet. Be the first to feed the void.</div>
           ) : (
             <div style={{ width: "100%", maxWidth: 440 }}>
-              {scores.slice(0, 20).map((e, i) => (
+              {scores.slice(0, 10).map((e, i) => (
                 <div key={i} style={{
                   display: "flex", justifyContent: "space-between", alignItems: "center",
                   padding: "8px 0", borderBottom: "1px solid rgba(168,85,247,0.1)",
@@ -628,6 +642,7 @@
       const [showPortal, setShowPortal] = useState(false);
       const [portalBonusCount, setPortalBonusCount] = useState(0);
       const [scoreBreakdown, setScoreBreakdown] = useState([]);
+      const [isOnline, setIsOnline] = useState(null); // null=unchecked
       const hasFailedOnce = useRef(false);
 
       const timerRef = useRef(null);
@@ -640,6 +655,8 @@
       const showLineRef = useRef(false);
       const dragPathRef = useRef([]);
       const gameStateRef = useRef("menu");
+      const roundLog = useRef([]);
+      const roundSetupRef = useRef(null);
 
       // Checkpoint system: saves at each multiplier milestone
       const [checkpoint, setCheckpoint] = useState(null);
@@ -685,8 +702,10 @@
 
       const startLevel = useCallback(() => {
         const angle = Math.random() * Math.PI * 2;
+        const lt = { angle: angle + rand(-0.6, 0.6), length: lineLen };
         setDotAngle(angle);
-        setLineTarget({ angle: angle + rand(-0.6, 0.6), length: lineLen });
+        setLineTarget(lt);
+        roundSetupRef.current = { dotAngle: angle, lineAngle: lt.angle, lineLength: lt.length };
         setLineProgress(0);
         setLineFade(1);
         setShowPortal(false);
@@ -709,12 +728,16 @@
         gameStateRef.current = "playing";
       }, [lineLen, maxTime]);
 
-      const startGame = () => {
+      const startGame = async () => {
         AudioEngine.init();
         AudioEngine.startAmbient();
+        // check connectivity once — locks mode for this session
+        const online = await checkConnectivity();
+        setIsOnline(online);
         setTotalRound(0);
         setScore(0);
         internalScore.current = 0;
+        roundLog.current = [];
         setHoleRadius(35);
         setSubmitStatus("");
         setIsSubmitting(false);
@@ -732,6 +755,7 @@
         setScore(checkpoint.score);
         internalScore.current = checkpoint.score;
         setHoleRadius(checkpoint.holeRadius);
+        roundLog.current = roundLog.current.slice(0, checkpoint.round);
         setRetriesLeft((prev) => prev - 1);
         startLevel();
       };
@@ -846,6 +870,17 @@
           internalScore.current += finalScore;
           setScore(internalScore.current);
 
+          // log raw round data for server-side verification
+          if (roundSetupRef.current) {
+            roundLog.current.push({
+              dotAngle: roundSetupRef.current.dotAngle,
+              lineAngle: roundSetupRef.current.lineAngle,
+              lineLength: roundSetupRef.current.lineLength,
+              dragPath: path.map(p => ({ x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10 })),
+              circleR, cx, cy, elapsed,
+            });
+          }
+
           // build stacking breakdown lines
           const lines = [];
           lines.push({ label: 'BASE', value: baseScore, color: '#a855f7' });
@@ -886,7 +921,7 @@
             gameStateRef.current = "gameover";
           }
         }
-      }, [evaluateDrag, maxTime, multiplier, lv.set]);
+      }, [evaluateDrag, maxTime, multiplier, lv.set, cx, cy, circleR]);
 
       // FULLY NATIVE event handling — no React synthetic events at all
       // This eliminates any race between React's event system and native touch
@@ -1015,7 +1050,7 @@
         setIsSubmitting(true);
         const name = playerName.trim() || "ANON";
         setSubmitStatus("Submitting...");
-        const result = await submitScore(name, score, levelString(lv), totalRound);
+        const result = await submitGameData(name, roundLog.current, score);
         if (result.error) {
           setSubmitStatus("Failed: " + result.error);
           setIsSubmitting(false);
@@ -1127,10 +1162,17 @@
             animation: shakeLevel === 2 ? "shake2 0.15s infinite" : shakeLevel === 1 ? "shake1 0.2s infinite" : "none",
           }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div style={{ color: "#a855f7", fontSize: "clamp(11px,2.5vw,16px)", letterSpacing: 2, opacity: 0.8 }}>
+              <div style={{ color: "#a855f7", fontSize: "clamp(11px,2.5vw,16px)", letterSpacing: 2, opacity: 0.8, display: "flex", alignItems: "center", gap: 6 }}>
+                {isOnline !== null && (
+                  <span style={{
+                    display: "inline-block", width: 6, height: 6, borderRadius: "50%",
+                    background: isOnline ? "#40dd60" : "#ff3050",
+                    boxShadow: isOnline ? "0 0 6px rgba(64,221,96,0.5)" : "0 0 6px rgba(255,48,80,0.5)",
+                  }} />
+                )}
                 <span style={{ color: "#fff", fontWeight: 700 }}>{levelString(lv)}</span>
                 {multiplier > 1 && (
-                  <span style={{ color: "#ff3050", marginLeft: 10, fontSize: "clamp(9px,2vw,12px)" }}>{multiplier}x</span>
+                  <span style={{ color: "#ff3050", marginLeft: 4, fontSize: "clamp(9px,2vw,12px)" }}>{multiplier}x</span>
                 )}
               </div>
               <div style={{ color: "#fff", fontSize: "clamp(14px,3.5vw,22px)", fontWeight: 700, letterSpacing: 3 }}>{score.toLocaleString()}</div>
@@ -1338,7 +1380,7 @@
             textAlign: "center", color: "#fff",
             fontSize: "clamp(8px, 1.5vw, 10px)", letterSpacing: 2,
             zIndex: 2, pointerEvents: "none",
-          }}>v0.1.3a</div>
+          }}>v0.1.4a</div>
         </div>
       );
     }
@@ -1347,3 +1389,4 @@
   </script>
 </body>
 </html>
+
