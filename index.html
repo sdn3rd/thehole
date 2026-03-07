@@ -157,7 +157,6 @@
         if (!this.ctx) return;
         const ctx = this.ctx;
         const t = ctx.currentTime;
-        // low thrum: deep sine pulse that swells and decays
         const osc1 = ctx.createOscillator();
         osc1.type = 'sine';
         osc1.frequency.setValueAtTime(60, t);
@@ -167,7 +166,6 @@
         g1.gain.linearRampToValueAtTime(0.18, t + 0.06);
         g1.gain.linearRampToValueAtTime(0.12, t + 0.15);
         g1.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
-        // second harmonic for body
         const osc2 = ctx.createOscillator();
         osc2.type = 'triangle';
         osc2.frequency.setValueAtTime(90, t);
@@ -180,6 +178,48 @@
         osc2.connect(g2).connect(ctx.destination);
         osc1.start(t); osc2.start(t);
         osc1.stop(t + 0.55); osc2.stop(t + 0.45);
+      },
+      // ascending chime for score stacking — pitch rises per step
+      playScoreTick(step) {
+        if (!this.ctx) return;
+        const ctx = this.ctx;
+        const t = ctx.currentTime;
+        const baseFreq = 220 + step * 80;
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(baseFreq, t);
+        osc.frequency.linearRampToValueAtTime(baseFreq * 1.02, t + 0.12);
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0, t);
+        g.gain.linearRampToValueAtTime(0.08, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+        // soft reverb feel via delay
+        const delay = ctx.createDelay();
+        delay.delayTime.setValueAtTime(0.06, t);
+        const dg = ctx.createGain();
+        dg.gain.setValueAtTime(0.03, t);
+        osc.connect(g).connect(ctx.destination);
+        g.connect(delay).connect(dg).connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.25);
+      },
+      // positive shimmer for high accuracy
+      playAccuracyBonus() {
+        if (!this.ctx) return;
+        const ctx = this.ctx;
+        const t = ctx.currentTime;
+        [330, 415, 523].forEach((f, i) => {
+          const osc = ctx.createOscillator();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(f, t + i * 0.06);
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0, t + i * 0.06);
+          g.gain.linearRampToValueAtTime(0.05, t + i * 0.06 + 0.02);
+          g.gain.exponentialRampToValueAtTime(0.001, t + i * 0.06 + 0.3);
+          osc.connect(g).connect(ctx.destination);
+          osc.start(t + i * 0.06);
+          osc.stop(t + i * 0.06 + 0.35);
+        });
       },
       playFail() {
         if (!this.ctx) return;
@@ -583,6 +623,7 @@
       const [isSubmitting, setIsSubmitting] = useState(false);
       const [showTutorial, setShowTutorial] = useState(false);
       const [showPortal, setShowPortal] = useState(false);
+      const [scoreBreakdown, setScoreBreakdown] = useState([]);
       const hasFailedOnce = useRef(false);
 
       const timerRef = useRef(null);
@@ -643,6 +684,7 @@
         setLineProgress(0);
         setLineFade(1);
         setShowPortal(false);
+        setScoreBreakdown([]);
         cancelAnimationFrame(fadeAnimRef.current);
         AudioEngine.stopLaser();
         setDragPath([]);
@@ -759,13 +801,55 @@
           AudioEngine.stopLaser();
           AudioEngine.playZap();
           setShowPortal(true);
+
           const elapsed = (Date.now() - levelStartTime.current) / 1000;
-          const speedBonus = Math.max(0, 1 - elapsed / (maxTime * 1.2));
-          const baseScore = Math.round(result.accuracy * 500 + speedBonus * 300 + result.coverage * 200);
-          const finalScore = baseScore * multiplier;
+          const timeRemaining = Math.max(0, maxTime - elapsed);
+          const accuracyPct = Math.round(result.accuracy * 100);
+
+          // accuracy bonus multiplier: 95%+ = x1.5, scales down per 5%
+          let accMult = 1.0;
+          if (accuracyPct >= 95) accMult = 1.5;
+          else if (accuracyPct >= 90) accMult = 1.4;
+          else if (accuracyPct >= 85) accMult = 1.3;
+          else if (accuracyPct >= 80) accMult = 1.2;
+          else if (accuracyPct >= 75) accMult = 1.1;
+
+          // base score from coverage and accuracy
+          const baseScore = Math.round(result.accuracy * 400 + result.coverage * 200);
+          // time bonus: remaining time * 100
+          const timeBonus = Math.round(timeRemaining * 100);
+          // apply accuracy multiplier to base
+          const accBoosted = Math.round(baseScore * accMult);
+          // apply level multiplier
+          const finalScore = Math.round((accBoosted + timeBonus) * multiplier);
+
           internalScore.current += finalScore;
           setScore(internalScore.current);
-          setFeedback(multiplier > 1 ? '+' + finalScore + ' (' + multiplier + 'x)' : '+' + finalScore);
+
+          // build stacking breakdown lines
+          const lines = [];
+          lines.push({ label: 'BASE', value: baseScore, color: '#a855f7' });
+          if (accMult > 1) {
+            lines.push({ label: 'ACCURACY ' + accuracyPct + '%', value: 'x' + accMult, color: '#ff9020' });
+          }
+          if (timeBonus > 0) {
+            lines.push({ label: 'TIME', value: '+' + timeBonus, color: '#40d0ff' });
+          }
+          if (multiplier > 1) {
+            lines.push({ label: 'LEVEL', value: 'x' + multiplier, color: '#ff3050' });
+          }
+          lines.push({ label: 'TOTAL', value: '+' + finalScore, color: '#fff' });
+          setScoreBreakdown(lines);
+
+          // play ascending ticks for each line, accuracy shimmer if bonus
+          lines.forEach((_, i) => {
+            setTimeout(() => AudioEngine.playScoreTick(i), i * 150);
+          });
+          if (accMult > 1) {
+            setTimeout(() => AudioEngine.playAccuracyBonus(), lines.length * 150);
+          }
+
+          setFeedback(''); // clear old feedback, breakdown handles display
           setHoleRadius((prev) => prev + 6 + lv.set * 1.5);
           setGameState("success");
           gameStateRef.current = "success";
@@ -893,7 +977,7 @@
             }, 2200);
             return () => clearTimeout(t);
           } else {
-            const t = setTimeout(() => startLevel(), 800);
+            const t = setTimeout(() => startLevel(), 1800);
             return () => clearTimeout(t);
           }
         }
@@ -949,6 +1033,12 @@
               30%{opacity:1;transform:translate(-50%,-30px) scale(1.3)}
               60%{opacity:0.8;transform:translate(-50%,-120px) scale(0.9)}
               100%{opacity:0;transform:translate(-50%,-200px) scale(0.5)}
+            }
+            @keyframes scoreLine{
+              0%{opacity:0;transform:translateX(30px)}
+              20%{opacity:1;transform:translateX(0)}
+              70%{opacity:1;transform:translateX(0)}
+              100%{opacity:0;transform:translateX(-10px)}
             }
             @keyframes shake1{0%,100%{transform:translateX(0)}25%{transform:translateX(-2px)}75%{transform:translateX(2px)}}
             @keyframes shake2{0%,100%{transform:translateX(0)}20%{transform:translateX(-4px)}40%{transform:translateX(4px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
@@ -1032,16 +1122,42 @@
             </div>
           </div>
 
-          {/* Feedback float */}
-          {feedback && (gameState === "success" || gameState === "gameover") && (
+          {/* Score breakdown stack — success */}
+          {scoreBreakdown.length > 0 && gameState === "success" && (
+            <div key={'bd-' + totalRound} style={{
+              position: "absolute", left: "50%", top: cy - circleR - 30,
+              transform: "translateX(-50%)",
+              zIndex: 30, pointerEvents: "none",
+              display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2,
+            }}>
+              {scoreBreakdown.map((line, i) => (
+                <div key={i} style={{
+                  display: "flex", gap: 10, alignItems: "baseline",
+                  animation: 'scoreLine 1.2s ease-out forwards',
+                  animationDelay: (i * 0.15) + 's',
+                  opacity: 0,
+                  fontSize: i === scoreBreakdown.length - 1 ? "clamp(18px,4.5vw,28px)" : "clamp(11px,2.5vw,16px)",
+                  fontWeight: i === scoreBreakdown.length - 1 ? 700 : 400,
+                }}>
+                  <span style={{ color: "rgba(255,255,255,0.4)", letterSpacing: 2, fontSize: "clamp(8px,1.8vw,11px)" }}>{line.label}</span>
+                  <span style={{
+                    color: line.color, fontWeight: 700, letterSpacing: 2,
+                    textShadow: '0 0 12px ' + line.color + '66',
+                  }}>{line.value}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Fail feedback */}
+          {feedback && gameState === "gameover" && (
             <div key={feedback + totalRound} style={{
               position: "absolute", left: "50%", top: cy - circleR - 50,
               transform: "translateX(-50%)",
-              color: gameState === "success" ? "#a855f7" : "#ff3050",
+              color: "#ff3050",
               fontSize: "clamp(18px,5vw,32px)", fontWeight: 700, letterSpacing: 3, zIndex: 30,
               animation: "scoreFloat 1.2s ease-out forwards", pointerEvents: "none",
-              textShadow: gameState === "success"
-                ? "0 0 20px rgba(168,85,247,0.8)" : "0 0 20px rgba(255,48,80,0.8)",
+              textShadow: "0 0 20px rgba(255,48,80,0.8)",
             }}>{feedback}</div>
           )}
 
@@ -1180,7 +1296,7 @@
             textAlign: "center", color: "#fff",
             fontSize: "clamp(8px, 1.5vw, 10px)", letterSpacing: 2,
             zIndex: 2, pointerEvents: "none",
-          }}>v0.1.1a</div>
+          }}>v0.0.2a</div>
         </div>
       );
     }
@@ -1189,5 +1305,3 @@
   </script>
 </body>
 </html>
-
-
