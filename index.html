@@ -346,6 +346,9 @@
       const [playerName, setPlayerName] = useState("");
       const [submitStatus, setSubmitStatus] = useState("");
       const [milestone, setMilestone] = useState(null);
+      const [isSubmitting, setIsSubmitting] = useState(false);
+      const [showTutorial, setShowTutorial] = useState(false);
+      const hasFailedOnce = useRef(false);
 
       const timerRef = useRef(null);
       const lineAnimRef = useRef(null);
@@ -420,6 +423,7 @@
         internalScore.current = 0;
         setHoleRadius(35);
         setSubmitStatus("");
+        setIsSubmitting(false);
         setCheckpoint(null);
         setRetryUsed(false);
         startLevel();
@@ -451,8 +455,13 @@
             isDraggingRef.current = false;
             setAttemptDone(true);
             setFeedback("TIME'S UP");
-            setGameState("gameover");
-            gameStateRef.current = "gameover";
+            if (!hasFailedOnce.current) {
+              hasFailedOnce.current = true;
+              setShowTutorial(true);
+            } else {
+              setGameState("gameover");
+              gameStateRef.current = "gameover";
+            }
           }
         }, 30);
         return () => clearInterval(timerRef.current);
@@ -512,8 +521,13 @@
           setTimeout(() => setTotalRound((p) => p + 1), 100);
         } else {
           setFeedback(result.reason || (result.coverage <= 0.5 ? "TRACE FURTHER" : "TOO SLOPPY"));
-          setGameState("gameover");
-          gameStateRef.current = "gameover";
+          if (!hasFailedOnce.current) {
+            hasFailedOnce.current = true;
+            setShowTutorial(true);
+          } else {
+            setGameState("gameover");
+            gameStateRef.current = "gameover";
+          }
         }
       }, [evaluateDrag, maxTime, multiplier, lv.set]);
 
@@ -635,11 +649,14 @@
       }, [gameState, totalRound, startLevel, holeRadius]);
 
       const handleSubmitScore = async () => {
+        if (isSubmitting) return;
+        setIsSubmitting(true);
         const name = playerName.trim() || "ANON";
         setSubmitStatus("Submitting...");
         const result = await submitScore(name, score, levelString(lv), totalRound);
         if (result.error) {
           setSubmitStatus("Failed: " + result.error);
+          setIsSubmitting(false);
         } else {
           const where = result.source === 'local' ? ' (local)' : '';
           setSubmitStatus(result.rank ? "Rank #" + result.rank + "!" + where : "Saved!" + where);
@@ -650,6 +667,9 @@
       const handleRetry = () => {
         if (checkpoint && !retryUsed) {
           retryFromCheckpoint();
+        } else if (score === 0) {
+          setGameState("scores");
+          setTimeout(() => setGameState("menu"), 3000);
         } else {
           setGameState("submit");
         }
@@ -766,6 +786,40 @@
             }}>{feedback}</div>
           )}
 
+          {/* TUTORIAL — shows on first fail, tap to dismiss */}
+          {showTutorial && (
+            <div
+              onClick={() => { setShowTutorial(false); startLevel(); }}
+              onTouchEnd={(e) => { e.preventDefault(); setShowTutorial(false); startLevel(); }}
+              style={{
+                position: "absolute", inset: 0, zIndex: 55,
+                background: "rgba(8,6,14,0.9)",
+                display: "flex", flexDirection: "column",
+                alignItems: "center", justifyContent: "center",
+                cursor: "pointer", padding: "5vw",
+              }}
+            >
+              <div style={{
+                fontSize: "clamp(14px,3.5vw,20px)", color: "#a855f7",
+                letterSpacing: 3, marginBottom: "3vh", textTransform: "uppercase",
+                fontWeight: 700,
+              }}>how to play</div>
+              <div style={{
+                fontSize: "clamp(13px,3vw,18px)", color: "rgba(255,255,255,0.8)",
+                textAlign: "center", lineHeight: 2, maxWidth: 360,
+                letterSpacing: 1,
+              }}>
+                Tap the red circle and drag your finger along the line that appears outward.
+                <br /><br />
+                Don't lift your finger until you've traced the line.
+              </div>
+              <div style={{
+                marginTop: "5vh", fontSize: "clamp(10px,2vw,12px)",
+                color: "rgba(168,85,247,0.4)", letterSpacing: 3, textTransform: "uppercase",
+              }}>tap anywhere to continue</div>
+            </div>
+          )}
+
           {/* MILESTONE BANNER */}
           {milestone && (
             <div key={'ms-' + milestone.mult} style={{
@@ -836,7 +890,7 @@
                 <input
                   type="text" maxLength={16} value={playerName}
                   onChange={(e) => setPlayerName(e.target.value.toUpperCase())}
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleSubmitScore(); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !isSubmitting) handleSubmitScore(); }}
                   placeholder="ANON" autoFocus
                   style={{
                     background: "rgba(255,255,255,0.05)", border: "1px solid rgba(168,85,247,0.3)",
@@ -850,12 +904,13 @@
                 {submitStatus && (
                   <div style={{ fontSize: "clamp(10px,2vw,13px)", color: submitStatus.startsWith("Rank") ? "#a855f7" : "#555", letterSpacing: 2, marginBottom: 12 }}>{submitStatus}</div>
                 )}
-                <button onClick={handleSubmitScore} style={{
-                  background: "none", border: "1px solid rgba(168,85,247,0.4)",
-                  color: "#a855f7", padding: "10px 40px", fontSize: "clamp(12px,3vw,16px)",
-                  letterSpacing: 4, cursor: "pointer", borderRadius: 0,
+                <button onClick={handleSubmitScore} disabled={isSubmitting} style={{
+                  background: "none", border: "1px solid " + (isSubmitting ? "rgba(85,85,85,0.3)" : "rgba(168,85,247,0.4)"),
+                  color: isSubmitting ? "#555" : "#a855f7", padding: "10px 40px", fontSize: "clamp(12px,3vw,16px)",
+                  letterSpacing: 4, cursor: isSubmitting ? "default" : "pointer", borderRadius: 0,
                   textTransform: "uppercase", fontFamily: "'Space Mono',monospace",
-                }}>Submit</button>
+                  opacity: isSubmitting ? 0.5 : 1,
+                }}>{isSubmitting ? "Submitting..." : "Submit"}</button>
               </>)}
             </div>
           )}
