@@ -469,23 +469,29 @@
         canvas.style.height = size + "px";
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         let t = 0, running = true;
+        let lastFrame = 0;
         const center = size / 2;
-        const draw = () => {
+        const draw = (now) => {
           if (!running) return;
-          t += 0.012;
+          // 30fps throttle
+          if (now - lastFrame < 33) { animRef.current = requestAnimationFrame(draw); return; }
+          lastFrame = now;
+          t += 0.024;
           ctx.clearRect(0, 0, size, size);
-          for (let l = 6; l >= 0; l--) {
-            const layerR = radius * (1 + l * 0.15);
-            const alpha = l === 0 ? 1 : 0.06 + l * 0.035;
+          // 4 layers instead of 7, 60 points instead of 100
+          const maxLayers = 4;
+          const pts = 60;
+          for (let l = maxLayers; l >= 0; l--) {
+            const layerR = radius * (1 + l * 0.18);
+            const alpha = l === 0 ? 1 : 0.08 + l * 0.04;
             ctx.beginPath();
-            for (let i = 0; i <= 100; i++) {
-              const angle = (i / 100) * Math.PI * 2;
-              const w1 = Math.sin(angle * 3 + t * 1.2 + l) * (4 + l * 2);
-              const w2 = Math.sin(angle * 5 - t * 0.8 + l * 2) * (3 + l * 1.2);
-              const w3 = Math.cos(angle * 7 + t * 1.5) * (2 + l * 0.7);
+            for (let i = 0; i <= pts; i++) {
+              const angle = (i / pts) * Math.PI * 2;
+              const w1 = Math.sin(angle * 3 + t * 1.2 + l) * (4 + l * 2.5);
+              const w2 = Math.sin(angle * 5 - t * 0.8 + l * 2) * (3 + l * 1.5);
               const p = Math.sin(t * 1.5 + l * 0.5) * 3;
-              const r = layerR + w1 + w2 + w3 + p;
-              const ra = angle + t * 0.12 + l * 0.04;
+              const r = layerR + w1 + w2 + p;
+              const ra = angle + t * 0.12 + l * 0.05;
               const x = center + Math.cos(ra) * r;
               const y = center + Math.sin(ra) * r;
               if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
@@ -499,31 +505,26 @@
               grad.addColorStop(1, "#2d004a");
               ctx.fillStyle = grad;
             } else {
-              ctx.fillStyle = 'rgba(' + (20+l*12) + ',0,' + (40+l*18) + ',' + alpha + ')';
+              ctx.fillStyle = 'rgba(' + (20+l*14) + ',0,' + (40+l*20) + ',' + alpha + ')';
             }
             ctx.fill();
           }
+          // 40 accretion ring particles instead of 80
           ctx.save();
           ctx.translate(center, center);
           ctx.rotate(t * 0.25);
-          for (let i = 0; i < 80; i++) {
-            const a = (i / 80) * Math.PI * 2;
+          for (let i = 0; i < 40; i++) {
+            const a = (i / 40) * Math.PI * 2;
             const rr = radius * 1.1 + Math.sin(a * 4 + t * 2) * 4;
             ctx.beginPath();
             ctx.arc(Math.cos(a) * rr, Math.sin(a) * rr * 0.3, 1.8 + Math.sin(a + t) * 0.8, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(' + (130+i) + ',' + Math.floor(40+i*0.5) + ',200,' + (0.15+Math.sin(a*3+t*4)*0.12) + ')';
+            ctx.fillStyle = 'rgba(' + (130+i*2) + ',' + Math.floor(40+i) + ',200,' + (0.15+Math.sin(a*3+t*4)*0.12) + ')';
             ctx.fill();
           }
           ctx.restore();
-          const gg = ctx.createRadialGradient(center, center, radius * 0.7, center, center, radius * 2);
-          gg.addColorStop(0, "rgba(80,0,140,0)");
-          gg.addColorStop(0.4, "rgba(80,0,140,0.05)");
-          gg.addColorStop(1, "rgba(80,0,140,0)");
-          ctx.fillStyle = gg;
-          ctx.fillRect(0, 0, size, size);
           animRef.current = requestAnimationFrame(draw);
         };
-        draw();
+        animRef.current = requestAnimationFrame(draw);
         return () => { running = false; cancelAnimationFrame(animRef.current); };
       }, [radius, size]);
 
@@ -633,7 +634,7 @@
       const [isDragging, setIsDragging] = useState(false);
       const [timeLeft, setTimeLeft] = useState(3);
       const [showLine, setShowLine] = useState(false);
-      const [holeRadius, setHoleRadius] = useState(35);
+      const [holeRadius, setHoleRadius] = useState(15);
       const [feedback, setFeedback] = useState("");
       const [dotPulse, setDotPulse] = useState(0);
       const [shakeLevel, setShakeLevel] = useState(0);
@@ -680,6 +681,31 @@
         return () => window.removeEventListener("resize", measure);
       }, []);
 
+      // Pause audio and game when screen sleeps / tab hidden
+      useEffect(() => {
+        const onVisibility = () => {
+          if (document.hidden) {
+            if (AudioEngine.ctx && AudioEngine.ctx.state === 'running') {
+              AudioEngine.ctx.suspend();
+            }
+            AudioEngine.stopLaser();
+            clearInterval(timerRef.current);
+            cancelAnimationFrame(lineAnimRef.current);
+            cancelAnimationFrame(fadeAnimRef.current);
+            // if mid-drag, end the attempt (can't pause a reflex game)
+            if (isDraggingRef.current && !attemptDoneRef.current) {
+              finishAttempt(dragPathRef.current);
+            }
+          } else {
+            if (AudioEngine.ctx && AudioEngine.ctx.state === 'suspended') {
+              AudioEngine.ctx.resume();
+            }
+          }
+        };
+        document.addEventListener('visibilitychange', onVisibility);
+        return () => document.removeEventListener('visibilitychange', onVisibility);
+      }, [finishAttempt]);
+
       // Sync gameState ref for native event handlers
       useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
 
@@ -699,7 +725,9 @@
       const cx = dims.w / 2;
       const cy = dims.h / 2;
       const circleR = Math.min(dims.w, dims.h) * 0.12;
-      const holeCanvasSize = Math.ceil(holeRadius * 6);
+      const maxHoleDim = Math.min(dims.w, dims.h) * 0.35;
+      const cappedHoleRadius = Math.min(holeRadius, maxHoleDim);
+      const holeCanvasSize = Math.min(Math.ceil(cappedHoleRadius * 3.5), maxHoleDim * 2.5);
 
       const lv = calcLevel(totalRound);
       const multiplier = getMultiplier(lv);
@@ -744,7 +772,7 @@
         setScore(0);
         internalScore.current = 0;
         roundLog.current = [];
-        setHoleRadius(35);
+        setHoleRadius(15);
         setSubmitStatus("");
         submittingRef.current = false;
         setIsSubmitting(false);
@@ -801,8 +829,31 @@
       const dotY = cy + Math.sin(dotAngle) * circleR;
       let lineEndX = dotX, lineEndY = dotY;
       if (lineTarget) {
-        lineEndX = dotX + Math.cos(lineTarget.angle) * lineTarget.length;
-        lineEndY = dotY + Math.sin(lineTarget.angle) * lineTarget.length;
+        let rawEndX = dotX + Math.cos(lineTarget.angle) * lineTarget.length;
+        let rawEndY = dotY + Math.sin(lineTarget.angle) * lineTarget.length;
+        // clamp to stay 25px from edges — scale line down if needed
+        const pad = 25;
+        const clampedX = clamp(rawEndX, pad, dims.w - pad);
+        const clampedY = clamp(rawEndY, pad, dims.h - pad);
+        if (rawEndX !== clampedX || rawEndY !== clampedY) {
+          // find the max t (0-1) where the line stays in bounds
+          const dx = rawEndX - dotX, dy = rawEndY - dotY;
+          let t = 1;
+          if (dx !== 0) {
+            if (rawEndX < pad) t = Math.min(t, (pad - dotX) / dx);
+            if (rawEndX > dims.w - pad) t = Math.min(t, (dims.w - pad - dotX) / dx);
+          }
+          if (dy !== 0) {
+            if (rawEndY < pad) t = Math.min(t, (pad - dotY) / dy);
+            if (rawEndY > dims.h - pad) t = Math.min(t, (dims.h - pad - dotY) / dy);
+          }
+          t = Math.max(0.3, t); // keep at least 30% of the line
+          lineEndX = dotX + dx * t;
+          lineEndY = dotY + dy * t;
+        } else {
+          lineEndX = rawEndX;
+          lineEndY = rawEndY;
+        }
       }
 
       const evaluateDrag = useCallback((path) => {
@@ -912,7 +963,7 @@
           }
 
           setFeedback(''); // clear old feedback, breakdown handles display
-          setHoleRadius((prev) => prev + 6 + lv.set * 1.5);
+          setHoleRadius((prev) => prev + Math.max(1, 4 / (1 + prev * 0.01)));
           setGameState("success");
           gameStateRef.current = "success";
           setTimeout(() => setTotalRound((p) => p + 1), 100);
@@ -1056,7 +1107,7 @@
         if (submittingRef.current) return;
         submittingRef.current = true;
         setIsSubmitting(true);
-        const name = playerName.trim() || "ANON";
+        const name = playerName.trim().toUpperCase() || "ANON";
 
         // profanity check when online — PurgoMalum free API, no library needed
         if (_online && name !== 'ANON') {
@@ -1151,6 +1202,7 @@
             @keyframes shake2{0%,100%{transform:translateX(0)}20%{transform:translateX(-4px)}40%{transform:translateX(4px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
             @keyframes milestoneIn{0%{opacity:0;transform:translate(-50%,-50%) scale(0.5)}15%{opacity:1;transform:translate(-50%,-50%) scale(1.15)}30%{transform:translate(-50%,-50%) scale(1)}85%{opacity:1;transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(-50%,-50%) scale(1.3)}}
             @keyframes nameShake{0%,100%{transform:translateX(0)}10%{transform:translateX(-8px)}20%{transform:translateX(8px)}30%{transform:translateX(-6px)}40%{transform:translateX(6px)}50%{transform:translateX(-4px)}60%{transform:translateX(4px)}70%{transform:translateX(-2px)}80%{transform:translateX(2px)}}
+            @keyframes titlePulse{0%,100%{text-shadow:0 0 20px rgba(255,255,255,0.3), 0 0 40px rgba(168,85,247,0.3)}50%{text-shadow:0 0 40px rgba(255,255,255,0.7), 0 0 80px rgba(168,85,247,0.5), 0 0 120px rgba(255,255,255,0.2)}}
           `}</style>
 
           {/* BLACK HOLE (z:1) */}
@@ -1160,7 +1212,7 @@
             width: holeCanvasSize, height: holeCanvasSize,
             zIndex: 1, pointerEvents: "none",
           }}>
-            <BlackHole size={holeCanvasSize} radius={holeRadius} />
+            <BlackHole size={holeCanvasSize} radius={cappedHoleRadius} />
           </div>
 
           {/* GAME INTERFACE (z:10) */}
@@ -1357,15 +1409,24 @@
               animation: "fadeInUp 0.5s ease-out",
             }}>
               {gameState === "menu" && (<>
-                <div style={{ fontSize: "clamp(36px,10vw,72px)", fontWeight: 700, color: "#fff", letterSpacing: 8, marginBottom: 8, textShadow: "0 0 40px rgba(168,85,247,0.5)" }}>THE HOLE</div>
-                <div style={{ fontSize: "clamp(10px,2.5vw,14px)", color: "rgba(168,85,247,0.5)", letterSpacing: 6, marginBottom: "6vh", textTransform: "uppercase" }}>feed the void</div>
+                <div style={{
+                  position: "absolute", left: "50%", top: "45%",
+                  width: "min(400px, 70vw)", height: "min(400px, 70vw)",
+                  borderRadius: "50%",
+                  background: "radial-gradient(circle, rgba(180,40,60,0.25) 0%, rgba(120,20,50,0.15) 40%, transparent 70%)",
+                  filter: "blur(40px)",
+                  transform: "translate(-50%,-50%)",
+                  pointerEvents: "none",
+                }} />
+                <div style={{ fontSize: "clamp(36px,10vw,72px)", fontWeight: 700, color: "#fff", letterSpacing: 8, marginBottom: 8, animation: "titlePulse 3s ease-in-out infinite" }}>THE HOLE</div>
+                <div style={{ fontSize: "clamp(10px,2.5vw,14px)", color: "rgba(200,170,255,0.8)", letterSpacing: 6, marginBottom: "6vh", textTransform: "uppercase" }}>feed the void</div>
                 <div style={{ display: "flex", gap: 16, flexWrap: "wrap", justifyContent: "center" }}>
                   <button onClick={startGame} style={{ background: "none", border: "1px solid rgba(168,85,247,0.4)", color: "#a855f7", padding: "12px 40px", fontSize: "clamp(12px,3vw,16px)", letterSpacing: 4, cursor: "pointer", borderRadius: 0, transition: "all 0.3s", textTransform: "uppercase", fontFamily: "'Space Mono',monospace" }}
                     onMouseEnter={(e) => { e.target.style.background = "rgba(168,85,247,0.15)"; e.target.style.borderColor = "rgba(168,85,247,0.8)"; }}
                     onMouseLeave={(e) => { e.target.style.background = "none"; e.target.style.borderColor = "rgba(168,85,247,0.4)"; }}>Begin</button>
                   <button onClick={() => setGameState("scores")} style={{ background: "none", border: "1px solid rgba(168,85,247,0.2)", color: "rgba(168,85,247,0.6)", padding: "12px 30px", fontSize: "clamp(11px,2.5vw,14px)", letterSpacing: 3, cursor: "pointer", borderRadius: 0, textTransform: "uppercase", fontFamily: "'Space Mono',monospace" }}>Scores</button>
                 </div>
-                <div style={{ marginTop: "4vh", color: "rgba(255,255,255,0.2)", fontSize: "clamp(9px,2vw,11px)", textAlign: "center", lineHeight: 1.8, letterSpacing: 1, maxWidth: "80%" }}>tap the red dot · trace the line · grow the hole</div>
+                <div style={{ marginTop: "4vh", color: "rgba(255,255,255,0.7)", fontSize: "clamp(9px,2vw,11px)", textAlign: "center", lineHeight: 1.8, letterSpacing: 1, maxWidth: "80%" }}>tap the red dot · trace the line · grow the hole</div>
               </>)}
 
               {gameState === "gameover" && (<>
@@ -1384,9 +1445,17 @@
                     </div>
                   </>
                 ) : (
-                  <button onClick={handleRetry} style={{ background: "none", border: "1px solid rgba(168,85,247,0.4)", color: "#a855f7", padding: "12px 40px", fontSize: "clamp(12px,3vw,16px)", letterSpacing: 4, cursor: "pointer", borderRadius: 0, textTransform: "uppercase", fontFamily: "'Space Mono',monospace" }}>
-                    {score > 0 ? 'Submit Score' : 'Continue'}
-                  </button>
+                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "center" }}>
+                    <button onClick={handleRetry} style={{ background: "none", border: "1px solid rgba(168,85,247,0.4)", color: "#a855f7", padding: "12px 40px", fontSize: "clamp(12px,3vw,16px)", letterSpacing: 4, cursor: "pointer", borderRadius: 0, textTransform: "uppercase", fontFamily: "'Space Mono',monospace" }}>
+                      {score > 0 ? 'Submit Score' : 'Continue'}
+                    </button>
+                    <button onClick={() => setGameState("menu")} style={{
+                      background: "none", border: "1px solid rgba(255,255,255,0.15)",
+                      color: "rgba(255,255,255,0.4)", padding: "12px 30px", fontSize: "clamp(11px,2.5vw,14px)",
+                      letterSpacing: 3, cursor: "pointer", borderRadius: 0,
+                      textTransform: "uppercase", fontFamily: "'Space Mono',monospace",
+                    }}>Cancel</button>
+                  </div>
                 )}
               </>)}
 
@@ -1394,7 +1463,8 @@
                 <div style={{ fontSize: "clamp(16px,4vw,24px)", fontWeight: 700, color: "#a855f7", letterSpacing: 4, marginBottom: 20 }}>ENTER NAME</div>
                 <input
                   type="text" maxLength={16} value={playerName}
-                  onChange={(e) => { setPlayerName(e.target.value.toUpperCase()); setSubmitStatus(""); }}
+                  onChange={(e) => { setPlayerName(e.target.value); setSubmitStatus(""); }}
+                  onBlur={(e) => setPlayerName(e.target.value.toUpperCase())}
                   onKeyDown={(e) => { if (e.key === 'Enter' && !submittingRef.current) handleSubmitScore(); }}
                   placeholder="ANON" autoFocus
                   style={{
@@ -1403,6 +1473,7 @@
                     color: "#fff", padding: "10px 20px", fontSize: "clamp(14px,3vw,18px)",
                     letterSpacing: 3, textAlign: "center", outline: "none",
                     fontFamily: "'Space Mono',monospace", width: "min(280px, 70vw)", borderRadius: 0,
+                    textTransform: "uppercase",
                     animation: nameShake ? "nameShake 0.5s ease-out" : "none",
                   }}
                 />
@@ -1415,13 +1486,21 @@
                     letterSpacing: 2, marginBottom: 12,
                   }}>{submitStatus}</div>
                 )}
-                <button onClick={handleSubmitScore} disabled={isSubmitting} style={{
-                  background: "none", border: "1px solid " + (isSubmitting ? "rgba(85,85,85,0.3)" : "rgba(168,85,247,0.4)"),
-                  color: isSubmitting ? "#555" : "#a855f7", padding: "10px 40px", fontSize: "clamp(12px,3vw,16px)",
-                  letterSpacing: 4, cursor: isSubmitting ? "default" : "pointer", borderRadius: 0,
-                  textTransform: "uppercase", fontFamily: "'Space Mono',monospace",
-                  opacity: isSubmitting ? 0.5 : 1,
-                }}>{isSubmitting ? "Submitting..." : "Submit"}</button>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "center" }}>
+                  <button onClick={handleSubmitScore} disabled={isSubmitting} style={{
+                    background: "none", border: "1px solid " + (isSubmitting ? "rgba(85,85,85,0.3)" : "rgba(168,85,247,0.4)"),
+                    color: isSubmitting ? "#555" : "#a855f7", padding: "10px 40px", fontSize: "clamp(12px,3vw,16px)",
+                    letterSpacing: 4, cursor: isSubmitting ? "default" : "pointer", borderRadius: 0,
+                    textTransform: "uppercase", fontFamily: "'Space Mono',monospace",
+                    opacity: isSubmitting ? 0.5 : 1,
+                  }}>{isSubmitting ? "Submitting..." : "Submit"}</button>
+                  <button onClick={() => setGameState("menu")} style={{
+                    background: "none", border: "1px solid rgba(255,255,255,0.15)",
+                    color: "rgba(255,255,255,0.4)", padding: "10px 30px", fontSize: "clamp(11px,2.5vw,14px)",
+                    letterSpacing: 3, cursor: "pointer", borderRadius: 0,
+                    textTransform: "uppercase", fontFamily: "'Space Mono',monospace",
+                  }}>Cancel</button>
+                </div>
               </>)}
             </div>
           )}
@@ -1432,7 +1511,7 @@
             textAlign: "center", color: "#fff",
             fontSize: "clamp(8px, 1.5vw, 10px)", letterSpacing: 2,
             zIndex: 2, pointerEvents: "none",
-          }}>v0.1.5b</div>
+          }}>v0.1.9b</div>
         </div>
       );
     }
