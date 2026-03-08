@@ -1,6 +1,4 @@
 // functions/api/submit.js
-// POST /api/submit — receives raw game data, recalculates score server-side
-// Only writes to KV if score qualifies for top 10
 
 function dist(x1, y1, x2, y2) {
   return Math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2);
@@ -25,25 +23,34 @@ function levelString(lv) {
   return lv.tier + ' / ' + lv.set + ' / ' + lv.sub;
 }
 
-// ── Profanity check via PurgoMalum API ──
 async function isProfane(text) {
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2000);
     const res = await fetch(
       'https://www.purgomalum.com/service/containsprofanity?text=' + encodeURIComponent(text),
-      { signal: AbortSignal.timeout(2000) }
+      { signal: controller.signal }
     );
+    clearTimeout(timeoutId);
     if (res.ok) {
       const result = await res.text();
       return result.trim() === 'true';
     }
   } catch {}
-  // if the API is down, allow the name (fail open)
   return false;
 }
 
-// ── Replay a single round ──
 function replayRound(round, roundIndex) {
-  const { dotAngle, lineAngle, lineLength, dragPath, circleR, cx, cy, elapsed } = round;
+  if (!round || typeof round !== 'object') return null;
+
+  const dotAngle = round.dotAngle;
+  const lineAngle = round.lineAngle;
+  const lineLength = round.lineLength;
+  const dragPath = round.dragPath;
+  const circleR = round.circleR;
+  const cx = round.cx;
+  const cy = round.cy;
+  const elapsed = round.elapsed;
 
   if (typeof dotAngle !== 'number' || typeof lineAngle !== 'number') return null;
   if (typeof lineLength !== 'number' || typeof circleR !== 'number') return null;
@@ -61,11 +68,14 @@ function replayRound(round, roundIndex) {
 
   const ldx = (lineEndX - dotX) / totalLineLen;
   const ldy = (lineEndY - dotY) / totalLineLen;
-  let totalDist = 0, maxProjection = 0;
+  let totalDist = 0;
+  let maxProjection = 0;
 
-  for (const p of dragPath) {
-    if (typeof p.x !== 'number' || typeof p.y !== 'number') return null;
-    const dx = p.x - dotX, dy = p.y - dotY;
+  for (let j = 0; j < dragPath.length; j++) {
+    const p = dragPath[j];
+    if (!p || typeof p.x !== 'number' || typeof p.y !== 'number') return null;
+    const dx = p.x - dotX;
+    const dy = p.y - dotY;
     const proj = dx * ldx + dy * ldy;
     const pc = clamp(proj, 0, totalLineLen);
     totalDist += dist(p.x, p.y, dotX + ldx * pc, dotY + ldy * pc);
@@ -110,33 +120,54 @@ function replayRound(round, roundIndex) {
 export async function onRequestPost(context) {
   const { env, request } = context;
 
+  let body;
   try {
-    const body = await request.json();
+    body = await request.json();
+  } catch {
+    return new Response(JSON.stringify({ error: 'Invalid JSON' }), {
+      status: 400, headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  try {
     const { name, rounds } = body;
 
     if (typeof name !== 'string') {
-      return new Response(JSON.stringify({ error: 'Invalid name' }), { status: 400 });
+      return new Response(JSON.stringify({ error: 'Invalid name' }), {
+        status: 400, headers: { 'Content-Type': 'application/json' },
+      });
     }
     if (!Array.isArray(rounds) || rounds.length === 0 || rounds.length > 10000) {
-      return new Response(JSON.stringify({ error: 'Invalid rounds' }), { status: 400 });
+      return new Response(JSON.stringify({ error: 'Invalid rounds' }), {
+        status: 400, headers: { 'Content-Type': 'application/json' },
+      });
     }
 
     const cleanName = name.replace(/[^A-Z0-9_\- ]/gi, '').slice(0, 16).trim() || 'ANON';
 
-    // ── Profanity check (server-side, not trusting client) ──
-    if (cleanName !== 'ANON' && await isProfane(cleanName)) {
-      return new Response(JSON.stringify({ error: 'profanity' }), { status: 400 });
+    // profanity check
+    if (cleanName !== 'ANON') {
+      const profane = await isProfane(cleanName);
+      if (profane) {
+        return new Response(JSON.stringify({ error: 'profanity' }), {
+          status: 400, headers: { 'Content-Type': 'application/json' },
+        });
+      }
     }
 
-    // ── Rate limit ──
+    // rate limit
     const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
     const rateLimitKey = 'ratelimit:' + ip;
-    const lastSubmit = await env.SCORES.get(rateLimitKey);
-    if (lastSubmit && Date.now() - parseInt(lastSubmit) < 5000) {
-      return new Response(JSON.stringify({ error: 'Too fast' }), { status: 429 });
-    }
+    try {
+      const lastSubmit = await env.SCORES.get(rateLimitKey);
+      if (lastSubmit && Date.now() - parseInt(lastSubmit) < 5000) {
+        return new Response(JSON.stringify({ error: 'Too fast' }), {
+          status: 429, headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    } catch {}
 
-    // ── Replay all rounds ──
+    // replay all rounds
     let totalScore = 0;
     let lastLv = { tier: 0, set: 0, sub: 0 };
 
@@ -148,13 +179,17 @@ export async function onRequestPost(context) {
     }
 
     if (totalScore <= 0) {
-      return new Response(JSON.stringify({ error: 'No valid score' }), { status: 400 });
+      return new Response(JSON.stringify({ error: 'No valid score' }), {
+        status: 400, headers: { 'Content-Type': 'application/json' },
+      });
     }
 
-    // ── Compare against current top 10 BEFORE writing ──
-    const existing = (await env.SCORES.get('leaderboard', { type: 'json' })) || [];
+    // compare against current top 10 before writing
+    let existing = [];
+    try {
+      existing = (await env.SCORES.get('leaderboard', { type: 'json' })) || [];
+    } catch {}
 
-    // if top 10 is full and this score doesn't beat the lowest, skip the write
     if (existing.length >= 10 && totalScore <= existing[existing.length - 1].s) {
       return new Response(JSON.stringify({
         success: true,
@@ -164,9 +199,10 @@ export async function onRequestPost(context) {
       }), { headers: { 'Content-Type': 'application/json' } });
     }
 
-    // ── Score qualifies — write to KV ──
-    // set rate limit (only count actual writes)
-    await env.SCORES.put(rateLimitKey, String(Date.now()), { expirationTtl: 10 });
+    // score qualifies — write
+    try {
+      await env.SCORES.put(rateLimitKey, String(Date.now()), { expirationTtl: 10 });
+    } catch {}
 
     const entry = {
       n: cleanName,
@@ -179,7 +215,14 @@ export async function onRequestPost(context) {
     existing.push(entry);
     existing.sort((a, b) => b.s - a.s);
     const top = existing.slice(0, 10);
-    await env.SCORES.put('leaderboard', JSON.stringify(top));
+
+    try {
+      await env.SCORES.put('leaderboard', JSON.stringify(top));
+    } catch (e) {
+      return new Response(JSON.stringify({ error: 'KV write failed: ' + e.message }), {
+        status: 500, headers: { 'Content-Type': 'application/json' },
+      });
+    }
 
     const rank = top.findIndex(e => e.t === entry.t) + 1;
 
@@ -189,11 +232,15 @@ export async function onRequestPost(context) {
       rank: rank > 0 && rank <= 10 ? rank : null,
     }), { headers: { 'Content-Type': 'application/json' } });
 
-  } catch {
-    return new Response(JSON.stringify({ error: 'Server error' }), { status: 500 });
+  } catch (e) {
+    return new Response(JSON.stringify({ error: 'Server error: ' + e.message }), {
+      status: 500, headers: { 'Content-Type': 'application/json' },
+    });
   }
 }
 
 export async function onRequestGet() {
-  return new Response(JSON.stringify({ error: 'Use POST' }), { status: 405 });
+  return new Response(JSON.stringify({ error: 'Use POST' }), {
+    status: 405, headers: { 'Content-Type': 'application/json' },
+  });
 }

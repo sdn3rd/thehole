@@ -437,10 +437,12 @@
           signal: controller.signal,
         });
         clearTimeout(timeout);
+        const data = await res.json();
         if (res.ok) {
-          const data = await res.json();
           return { ...data, source: 'online' };
         }
+        // pass server errors (profanity, rate limit) back to caller
+        return data;
       } catch {}
 
       const rank = local.findIndex(e => e.t === localEntry.t) + 1;
@@ -643,6 +645,7 @@
       const [portalBonusCount, setPortalBonusCount] = useState(0);
       const [scoreBreakdown, setScoreBreakdown] = useState([]);
       const [isOnline, setIsOnline] = useState(null); // null=unchecked
+      const [nameShake, setNameShake] = useState(false);
       const hasFailedOnce = useRef(false);
 
       const timerRef = useRef(null);
@@ -1047,16 +1050,49 @@
 
       const handleSubmitScore = async () => {
         if (isSubmitting) return;
-        setIsSubmitting(true);
         const name = playerName.trim() || "ANON";
+
+        // profanity check when online — PurgoMalum free API, no library needed
+        if (_online && name !== 'ANON') {
+          try {
+            const res = await fetch(
+              'https://www.purgomalum.com/service/containsprofanity?text=' + encodeURIComponent(name),
+              { signal: AbortSignal.timeout(2000) }
+            );
+            if (res.ok && (await res.text()).trim() === 'true') {
+              setNameShake(true);
+              setSubmitStatus("Name not allowed");
+              setPlayerName("");
+              setTimeout(() => setNameShake(false), 500);
+              return;
+            }
+          } catch {} // API down — let server-side check catch it
+        }
+
+        setIsSubmitting(true);
         setSubmitStatus("Submitting...");
         const result = await submitGameData(name, roundLog.current, score);
         if (result.error) {
-          setSubmitStatus("Failed: " + result.error);
-          setIsSubmitting(false);
+          if (result.error === 'profanity') {
+            // server caught it
+            setNameShake(true);
+            setSubmitStatus("Name not allowed");
+            setPlayerName("");
+            setIsSubmitting(false);
+            setTimeout(() => setNameShake(false), 500);
+          } else {
+            setSubmitStatus("Failed: " + result.error);
+            setIsSubmitting(false);
+          }
         } else {
           const where = result.source === 'local' ? ' (local)' : '';
-          setSubmitStatus(result.rank ? "Rank #" + result.rank + "!" + where : "Saved!" + where);
+          if (result.rank) {
+            setSubmitStatus("Rank #" + result.rank + "!" + where);
+          } else if (result.message) {
+            setSubmitStatus(result.message + where);
+          } else {
+            setSubmitStatus("Saved!" + where);
+          }
           setTimeout(() => setGameState("scores"), 1200);
         }
       };
@@ -1105,6 +1141,7 @@
             @keyframes shake1{0%,100%{transform:translateX(0)}25%{transform:translateX(-2px)}75%{transform:translateX(2px)}}
             @keyframes shake2{0%,100%{transform:translateX(0)}20%{transform:translateX(-4px)}40%{transform:translateX(4px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
             @keyframes milestoneIn{0%{opacity:0;transform:translate(-50%,-50%) scale(0.5)}15%{opacity:1;transform:translate(-50%,-50%) scale(1.15)}30%{transform:translate(-50%,-50%) scale(1)}85%{opacity:1;transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(-50%,-50%) scale(1.3)}}
+            @keyframes nameShake{0%,100%{transform:translateX(0)}10%{transform:translateX(-8px)}20%{transform:translateX(8px)}30%{transform:translateX(-6px)}40%{transform:translateX(6px)}50%{transform:translateX(-4px)}60%{transform:translateX(4px)}70%{transform:translateX(-2px)}80%{transform:translateX(2px)}}
           `}</style>
 
           {/* BLACK HOLE (z:1) */}
@@ -1348,20 +1385,26 @@
                 <div style={{ fontSize: "clamp(16px,4vw,24px)", fontWeight: 700, color: "#a855f7", letterSpacing: 4, marginBottom: 20 }}>ENTER NAME</div>
                 <input
                   type="text" maxLength={16} value={playerName}
-                  onChange={(e) => setPlayerName(e.target.value.toUpperCase())}
+                  onChange={(e) => { setPlayerName(e.target.value.toUpperCase()); setSubmitStatus(""); }}
                   onKeyDown={(e) => { if (e.key === 'Enter' && !isSubmitting) handleSubmitScore(); }}
                   placeholder="ANON" autoFocus
                   style={{
-                    background: "rgba(255,255,255,0.05)", border: "1px solid rgba(168,85,247,0.3)",
+                    background: "rgba(255,255,255,0.05)",
+                    border: "1px solid " + (nameShake ? "rgba(255,48,80,0.8)" : "rgba(168,85,247,0.3)"),
                     color: "#fff", padding: "10px 20px", fontSize: "clamp(14px,3vw,18px)",
                     letterSpacing: 3, textAlign: "center", outline: "none",
                     fontFamily: "'Space Mono',monospace", width: "min(280px, 70vw)", borderRadius: 0,
+                    animation: nameShake ? "nameShake 0.5s ease-out" : "none",
                   }}
                 />
                 <div style={{ fontSize: "clamp(22px,6vw,40px)", fontWeight: 700, color: "#fff", margin: "16px 0 4px" }}>{score.toLocaleString()}</div>
                 <div style={{ fontSize: "clamp(9px,2vw,11px)", color: "#555", letterSpacing: 2, marginBottom: 20 }}>{levelString(lv)}</div>
                 {submitStatus && (
-                  <div style={{ fontSize: "clamp(10px,2vw,13px)", color: submitStatus.startsWith("Rank") ? "#a855f7" : "#555", letterSpacing: 2, marginBottom: 12 }}>{submitStatus}</div>
+                  <div style={{
+                    fontSize: "clamp(10px,2vw,13px)",
+                    color: submitStatus.includes("not allowed") ? "#ff3050" : submitStatus.startsWith("Rank") ? "#a855f7" : "#555",
+                    letterSpacing: 2, marginBottom: 12,
+                  }}>{submitStatus}</div>
                 )}
                 <button onClick={handleSubmitScore} disabled={isSubmitting} style={{
                   background: "none", border: "1px solid " + (isSubmitting ? "rgba(85,85,85,0.3)" : "rgba(168,85,247,0.4)"),
@@ -1380,7 +1423,7 @@
             textAlign: "center", color: "#fff",
             fontSize: "clamp(8px, 1.5vw, 10px)", letterSpacing: 2,
             zIndex: 2, pointerEvents: "none",
-          }}>v0.1.4a</div>
+          }}>v0.0.2a</div>
         </div>
       );
     }
@@ -1389,4 +1432,3 @@
   </script>
 </body>
 </html>
-
