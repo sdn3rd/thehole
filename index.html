@@ -649,6 +649,7 @@
       const [scoreBreakdown, setScoreBreakdown] = useState([]);
       const [isOnline, setIsOnline] = useState(null); // null=unchecked
       const [nameShake, setNameShake] = useState(false);
+      const [qualifiesForBoard, setQualifiesForBoard] = useState(false);
       const hasFailedOnce = useRef(false);
 
       const timerRef = useRef(null);
@@ -1103,6 +1104,18 @@
         }
       }, [gameState, totalRound, startLevel, holeRadius]);
 
+      // Check if score qualifies for leaderboard when entering gameover
+      useEffect(() => {
+        if (gameState === "gameover" && score > 0) {
+          loadScoreboard().then(result => {
+            const scores = result.scores;
+            setQualifiesForBoard(scores.length < 10 || score > scores[scores.length - 1].s);
+          });
+        } else if (gameState === "gameover") {
+          setQualifiesForBoard(false);
+        }
+      }, [gameState, score]);
+
       const handleSubmitScore = async () => {
         if (submittingRef.current) return;
         submittingRef.current = true;
@@ -1157,22 +1170,13 @@
         }
       };
 
-      const handleRetry = async () => {
+      const handleRetry = () => {
         if (retriesLeft > 0 && checkpoint) {
           retryFromCheckpoint();
-        } else if (score === 0) {
-          setGameState("scores");
-          setTimeout(() => setGameState("menu"), 3000);
+        } else if (qualifiesForBoard) {
+          setGameState("submit");
         } else {
-          // check if score qualifies for top 10
-          const result = await loadScoreboard();
-          const scores = result.scores;
-          if (scores.length < 10 || score > scores[scores.length - 1].s) {
-            setGameState("submit");
-          } else {
-            // doesn't qualify — skip name entry
-            setGameState("menu");
-          }
+          setGameState("menu");
         }
       };
 
@@ -1452,10 +1456,10 @@
                       checkpoint: {levelString(calcLevel(checkpoint.round))}
                     </div>
                   </>
-                ) : (
+                ) : qualifiesForBoard ? (
                   <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "center" }}>
                     <button onClick={handleRetry} style={{ background: "none", border: "1px solid rgba(168,85,247,0.4)", color: "#a855f7", padding: "12px 40px", fontSize: "clamp(12px,3vw,16px)", letterSpacing: 4, cursor: "pointer", borderRadius: 0, textTransform: "uppercase", fontFamily: "'Space Mono',monospace" }}>
-                      {score > 0 ? 'Submit Score' : 'Continue'}
+                      Submit Score
                     </button>
                     <button onClick={() => setGameState("menu")} style={{
                       background: "none", border: "1px solid rgba(255,255,255,0.15)",
@@ -1464,6 +1468,10 @@
                       textTransform: "uppercase", fontFamily: "'Space Mono',monospace",
                     }}>Cancel</button>
                   </div>
+                ) : (
+                  <button onClick={() => setGameState("menu")} style={{ background: "none", border: "1px solid rgba(168,85,247,0.4)", color: "#a855f7", padding: "12px 40px", fontSize: "clamp(12px,3vw,16px)", letterSpacing: 4, cursor: "pointer", borderRadius: 0, textTransform: "uppercase", fontFamily: "'Space Mono',monospace" }}>
+                    Continue
+                  </button>
                 )}
               </>)}
 
