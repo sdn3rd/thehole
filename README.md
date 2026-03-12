@@ -145,10 +145,10 @@ Redeploy after binding.
 
 ```bash
 # Should return {"scores":[]}
-curl https://thehole.pages.dev/api/scores?mode=classic
+curl https://<domain>/api/scores?mode=classic
 
 # Should return {"scores":[]}
-curl https://thehole.pages.dev/api/scores?mode=arcade
+curl https://<domain>/api/scores?mode=arcade
 ```
 
 ## API
