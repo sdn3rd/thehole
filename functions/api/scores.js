@@ -3,7 +3,10 @@
 
 export async function onRequestGet(context) {
   try {
-    const data = await context.env.SCORES.get('leaderboard', { type: 'json' });
+    const url = new URL(context.request.url);
+    const mode = url.searchParams.get('mode') || 'classic';
+    const key = 'leaderboard:' + (mode === 'arcade' ? 'arcade' : 'classic');
+    const data = await context.env.SCORES.get(key, { type: 'json' });
     const scores = (data || []).slice(0, 10);
     return new Response(JSON.stringify(scores), {
       headers: {

@@ -130,7 +130,9 @@ export async function onRequestPost(context) {
   }
 
   try {
-    const { name, rounds } = body;
+    const { name, rounds, mode: rawMode } = body;
+    const mode = rawMode === 'arcade' ? 'arcade' : 'classic';
+    const kvKey = 'leaderboard:' + mode;
 
     if (typeof name !== 'string') {
       return new Response(JSON.stringify({ error: 'Invalid name' }), {
@@ -187,7 +189,7 @@ export async function onRequestPost(context) {
     // compare against current top 10 before writing
     let existing = [];
     try {
-      existing = (await env.SCORES.get('leaderboard', { type: 'json' })) || [];
+      existing = (await env.SCORES.get(kvKey, { type: 'json' })) || [];
     } catch {}
 
     if (existing.length >= 10 && totalScore <= existing[existing.length - 1].s) {
@@ -217,7 +219,7 @@ export async function onRequestPost(context) {
     const top = existing.slice(0, 10);
 
     try {
-      await env.SCORES.put('leaderboard', JSON.stringify(top));
+      await env.SCORES.put(kvKey, JSON.stringify(top));
     } catch (e) {
       return new Response(JSON.stringify({ error: 'KV write failed: ' + e.message }), {
         status: 500, headers: { 'Content-Type': 'application/json' },

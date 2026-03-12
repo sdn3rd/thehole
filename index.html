@@ -75,12 +75,342 @@
       // 2s start, aggressive decay: ~0.5s by round 10, ~0.28s by round 20
       return Math.max(0.2, 2.0 / (1 + totalRound * 0.3));
     }
+    function getLineCount(mode, totalRound) {
+      if (mode === 'arcade') return Math.min(1 + totalRound, 10); // caps at 10
+      return Math.min(1 + Math.floor(totalRound / 100), 5); // classic: +1 per tier, caps at 5
+    }
 
     const LINE_LENGTH_BASE = 120;
     function lerp(a, b, t) { return a + (b - a) * t; }
     function dist(x1, y1, x2, y2) { return Math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2); }
     function clamp(v, mn, mx) { return Math.max(mn, Math.min(mx, v)); }
     function rand(a, b) { return a + Math.random() * (b - a); }
+
+    /* ═══════════════════════════════════════════
+       TRANSLATIONS
+       ═══════════════════════════════════════════ */
+    const LANGS = ['ENG','ESP','FRA','DEU','POR','ITA','JPN','KOR','ZHO','RUS','ARA','HIN'];
+
+    const T = {
+      title: {
+        ENG:'THE HOLE', ESP:'EL AGUJERO', FRA:'LE TROU', DEU:'DAS LOCH', POR:'O BURACO',
+        ITA:'IL BUCO', JPN:'ザ・ホール', KOR:'더 홀', ZHO:'黑洞', RUS:'ДЫРА', ARA:'الثقب', HIN:'द होल',
+      },
+      subtitle: {
+        ENG:'FEED THE VOID', ESP:'ALIMENTA EL VACÍO', FRA:'NOURRIS LE VIDE', DEU:'FÜTTERE DIE LEERE',
+        POR:'ALIMENTE O VAZIO', ITA:'NUTRI IL VUOTO', JPN:'虚空を満たせ', KOR:'공허를 채워라',
+        ZHO:'喂养虚空', RUS:'НАКОРМИ ПУСТОТУ', ARA:'أطعم الفراغ', HIN:'शून्य को खिलाओ',
+      },
+      begin: {
+        ENG:'BEGIN', ESP:'COMENZAR', FRA:'COMMENCER', DEU:'STARTEN', POR:'INICIAR',
+        ITA:'INIZIA', JPN:'開始', KOR:'시작', ZHO:'开始', RUS:'НАЧАТЬ', ARA:'ابدأ', HIN:'शुरू',
+      },
+      tutorial: {
+        ENG:'TUTORIAL', ESP:'TUTORIAL', FRA:'TUTORIEL', DEU:'ANLEITUNG', POR:'TUTORIAL',
+        ITA:'TUTORIAL', JPN:'チュートリアル', KOR:'튜토리얼', ZHO:'教程', RUS:'ОБУЧЕНИЕ', ARA:'تعليمي', HIN:'ट्यूटोरियल',
+      },
+      rules: {
+        ENG:'RULES', ESP:'REGLAS', FRA:'RÈGLES', DEU:'REGELN', POR:'REGRAS',
+        ITA:'REGOLE', JPN:'ルール', KOR:'규칙', ZHO:'规则', RUS:'ПРАВИЛА', ARA:'القواعد', HIN:'नियम',
+      },
+      scores: {
+        ENG:'SCORES', ESP:'PUNTOS', FRA:'SCORES', DEU:'PUNKTE', POR:'PONTOS',
+        ITA:'PUNTEGGI', JPN:'スコア', KOR:'점수', ZHO:'分数', RUS:'ОЧКИ', ARA:'النتائج', HIN:'स्कोर',
+      },
+      howToPlay: {
+        ENG:'HOW TO PLAY', ESP:'CÓMO JUGAR', FRA:'COMMENT JOUER', DEU:'SO WIRD GESPIELT',
+        POR:'COMO JOGAR', ITA:'COME GIOCARE', JPN:'遊び方', KOR:'플레이 방법',
+        ZHO:'玩法说明', RUS:'КАК ИГРАТЬ', ARA:'كيف تلعب', HIN:'कैसे खेलें',
+      },
+      tutorialSteps: {
+        ENG: [
+          'A red dot appears on the circle. Tap and hold it.',
+          'A purple line shoots outward from the dot.',
+          'While still holding, drag your finger along the line.',
+          'The closer you trace the line, the higher your accuracy.',
+          'Release when you reach the end. Your score appears.',
+          'Green portal = all bonuses. Yellow = good. Orange = okay. Red = base only.',
+        ],
+        ESP: [
+          'Un punto rojo aparece en el círculo. Toca y mantén presionado.',
+          'Una línea púrpura se dispara hacia afuera desde el punto.',
+          'Sin soltar, arrastra tu dedo a lo largo de la línea.',
+          'Cuanto más preciso el trazo, mayor será tu puntuación.',
+          'Suelta cuando llegues al final. Tu puntuación aparecerá.',
+          'Portal verde = todos los bonos. Amarillo = bien. Naranja = aceptable. Rojo = solo base.',
+        ],
+        FRA: [
+          'Un point rouge apparaît sur le cercle. Appuyez et maintenez.',
+          'Une ligne violette jaillit du point.',
+          'Sans relâcher, glissez votre doigt le long de la ligne.',
+          'Plus votre tracé est précis, plus votre score est élevé.',
+          'Relâchez à la fin. Votre score apparaît.',
+          'Portail vert = tous les bonus. Jaune = bien. Orange = correct. Rouge = base uniquement.',
+        ],
+        DEU: [
+          'Ein roter Punkt erscheint am Kreis. Tippe und halte ihn.',
+          'Eine violette Linie schießt vom Punkt nach außen.',
+          'Ziehe deinen Finger entlang der Linie, ohne loszulassen.',
+          'Je genauer du der Linie folgst, desto höher dein Ergebnis.',
+          'Lass los am Ende. Dein Ergebnis erscheint.',
+          'Grünes Portal = alle Boni. Gelb = gut. Orange = okay. Rot = nur Basis.',
+        ],
+        POR: [
+          'Um ponto vermelho aparece no círculo. Toque e segure.',
+          'Uma linha roxa dispara para fora a partir do ponto.',
+          'Sem soltar, arraste o dedo ao longo da linha.',
+          'Quanto mais preciso o traço, maior sua pontuação.',
+          'Solte ao chegar ao final. Sua pontuação aparece.',
+          'Portal verde = todos os bônus. Amarelo = bom. Laranja = ok. Vermelho = apenas base.',
+        ],
+        ITA: [
+          'Un punto rosso appare sul cerchio. Tocca e tieni premuto.',
+          'Una linea viola parte dal punto verso l\'esterno.',
+          'Senza rilasciare, trascina il dito lungo la linea.',
+          'Più preciso è il tratto, più alto sarà il punteggio.',
+          'Rilascia alla fine. Il tuo punteggio appare.',
+          'Portale verde = tutti i bonus. Giallo = buono. Arancione = ok. Rosso = solo base.',
+        ],
+        JPN: [
+          '円の上に赤い点が表示されます。タップして長押しします。',
+          '紫色の線が点から外側に伸びます。',
+          '指を離さずに線に沿ってドラッグします。',
+          '線に正確になぞるほどスコアが高くなります。',
+          '端まで来たら指を離します。スコアが表示されます。',
+          '緑のポータル＝全ボーナス。黄色＝良い。オレンジ＝まあまあ。赤＝基本のみ。',
+        ],
+        KOR: [
+          '원 위에 빨간 점이 나타납니다. 탭하고 누르고 있으세요.',
+          '보라색 선이 점에서 바깥으로 뻗어나갑니다.',
+          '손가락을 떼지 않고 선을 따라 드래그하세요.',
+          '선을 정확하게 따라갈수록 점수가 높아집니다.',
+          '끝에 도달하면 손가락을 떼세요. 점수가 표시됩니다.',
+          '초록 포탈 = 모든 보너스. 노랑 = 좋음. 주황 = 보통. 빨강 = 기본만.',
+        ],
+        ZHO: [
+          '圆圈上会出现一个红点。点击并按住。',
+          '一条紫色线从红点向外延伸。',
+          '不要松手，沿着线拖动手指。',
+          '描线越精确，得分越高。',
+          '到达终点时松开手指。显示你的分数。',
+          '绿色传送门=所有奖励。黄色=良好。橙色=一般。红色=仅基础分。',
+        ],
+        RUS: [
+          'На круге появляется красная точка. Нажмите и удерживайте.',
+          'Фиолетовая линия стреляет наружу от точки.',
+          'Не отпуская, проведите пальцем вдоль линии.',
+          'Чем точнее вы следуете линии, тем выше ваш счёт.',
+          'Отпустите в конце. Ваш счёт появится.',
+          'Зелёный портал = все бонусы. Жёлтый = хорошо. Оранжевый = нормально. Красный = только база.',
+        ],
+        ARA: [
+          'تظهر نقطة حمراء على الدائرة. اضغط مع الاستمرار.',
+          'خط أرجواني ينطلق للخارج من النقطة.',
+          'دون رفع إصبعك، اسحب على طول الخط.',
+          'كلما كان التتبع أدق، زادت نقاطك.',
+          'ارفع إصبعك عند الوصول للنهاية. تظهر نتيجتك.',
+          'بوابة خضراء = كل المكافآت. أصفر = جيد. برتقالي = مقبول. أحمر = الأساس فقط.',
+        ],
+        HIN: [
+          'सर्कल पर एक लाल बिंदु दिखाई देता है। टैप करें और दबाए रखें।',
+          'बिंदु से बाहर की ओर एक बैंगनी रेखा निकलती है।',
+          'उंगली उठाए बिना, रेखा के साथ खींचें।',
+          'जितना सटीक आप रेखा का अनुसरण करेंगे, स्कोर उतना अधिक होगा।',
+          'अंत तक पहुंचने पर छोड़ें। आपका स्कोर दिखाई देता है।',
+          'हरा पोर्टल = सभी बोनस। पीला = अच्छा। नारंगी = ठीक। लाल = केवल आधार।',
+        ],
+      },
+      hint: {
+        ENG:'tap the red dot · trace the line · grow the hole',
+        ESP:'toca el punto rojo · traza la línea · crece el agujero',
+        FRA:'touchez le point rouge · tracez la ligne · agrandissez le trou',
+        DEU:'tippe den roten Punkt · zeichne die Linie · vergrößere das Loch',
+        POR:'toque o ponto vermelho · trace a linha · cresça o buraco',
+        ITA:'tocca il punto rosso · traccia la linea · fai crescere il buco',
+        JPN:'赤い点をタップ · 線をなぞる · 穴を大きくする',
+        KOR:'빨간 점을 탭 · 선을 따라 그리기 · 구멍 키우기',
+        ZHO:'点击红点 · 描线 · 扩大黑洞',
+        RUS:'нажми красную точку · проведи линию · расти дыру',
+        ARA:'انقر النقطة الحمراء · ارسم الخط · كبّر الثقب',
+        HIN:'लाल बिंदु पर टैप करें · रेखा खींचें · छेद बढ़ाएं',
+      },
+      consumed: {
+        ENG:'CONSUMED', ESP:'CONSUMIDO', FRA:'CONSUMÉ', DEU:'VERSCHLUNGEN', POR:'CONSUMIDO',
+        ITA:'CONSUMATO', JPN:'消滅', KOR:'소멸', ZHO:'吞噬', RUS:'ПОГЛОЩЁН', ARA:'التهم', HIN:'भस्म',
+      },
+      retry: {
+        ENG:'RETRY', ESP:'REINTENTAR', FRA:'RÉESSAYER', DEU:'ERNEUT', POR:'TENTAR',
+        ITA:'RIPROVA', JPN:'リトライ', KOR:'재시도', ZHO:'重试', RUS:'ПОВТОР', ARA:'إعادة', HIN:'पुनः प्रयास',
+      },
+      submitScore: {
+        ENG:'SUBMIT SCORE', ESP:'ENVIAR PUNTOS', FRA:'SOUMETTRE', DEU:'ABSENDEN', POR:'ENVIAR',
+        ITA:'INVIA', JPN:'スコア送信', KOR:'점수 제출', ZHO:'提交分数', RUS:'ОТПРАВИТЬ', ARA:'إرسال', HIN:'स्कोर भेजें',
+      },
+      cont: {
+        ENG:'CONTINUE', ESP:'CONTINUAR', FRA:'CONTINUER', DEU:'WEITER', POR:'CONTINUAR',
+        ITA:'CONTINUA', JPN:'続ける', KOR:'계속', ZHO:'继续', RUS:'ПРОДОЛЖИТЬ', ARA:'متابعة', HIN:'जारी रखें',
+      },
+      cancel: {
+        ENG:'CANCEL', ESP:'CANCELAR', FRA:'ANNULER', DEU:'ABBRECHEN', POR:'CANCELAR',
+        ITA:'ANNULLA', JPN:'キャンセル', KOR:'취소', ZHO:'取消', RUS:'ОТМЕНА', ARA:'إلغاء', HIN:'रद्द करें',
+      },
+      enterName: {
+        ENG:'ENTER NAME', ESP:'INGRESA NOMBRE', FRA:'ENTREZ VOTRE NOM', DEU:'NAME EINGEBEN',
+        POR:'DIGITE O NOME', ITA:'INSERISCI NOME', JPN:'名前を入力', KOR:'이름 입력',
+        ZHO:'输入名字', RUS:'ВВЕДИТЕ ИМЯ', ARA:'أدخل الاسم', HIN:'नाम दर्ज करें',
+      },
+      submit: {
+        ENG:'SUBMIT', ESP:'ENVIAR', FRA:'ENVOYER', DEU:'SENDEN', POR:'ENVIAR',
+        ITA:'INVIA', JPN:'送信', KOR:'제출', ZHO:'提交', RUS:'ОТПРАВИТЬ', ARA:'إرسال', HIN:'भेजें',
+      },
+      back: {
+        ENG:'BACK', ESP:'VOLVER', FRA:'RETOUR', DEU:'ZURÜCK', POR:'VOLTAR',
+        ITA:'INDIETRO', JPN:'戻る', KOR:'뒤로', ZHO:'返回', RUS:'НАЗАД', ARA:'رجوع', HIN:'वापस',
+      },
+      voidLedger: {
+        ENG:'VOID LEDGER', ESP:'REGISTRO DEL VACÍO', FRA:'REGISTRE DU VIDE', DEU:'LEERE-BUCH',
+        POR:'REGISTRO DO VAZIO', ITA:'REGISTRO DEL VUOTO', JPN:'虚空の記録', KOR:'공허의 기록',
+        ZHO:'虚空记录', RUS:'КНИГА ПУСТОТЫ', ARA:'سجل الفراغ', HIN:'शून्य का लेखा',
+      },
+      noScores: {
+        ENG:'No scores yet. Be the first to feed the void.',
+        ESP:'Sin puntuaciones aún. Sé el primero en alimentar el vacío.',
+        FRA:'Pas encore de scores. Soyez le premier à nourrir le vide.',
+        DEU:'Noch keine Punkte. Sei der Erste, der die Leere füttert.',
+        POR:'Sem pontuações ainda. Seja o primeiro a alimentar o vazio.',
+        ITA:'Nessun punteggio ancora. Sii il primo a nutrire il vuoto.',
+        JPN:'スコアはまだありません。最初に虚空を満たしましょう。',
+        KOR:'아직 점수가 없습니다. 처음으로 공허를 채우세요.',
+        ZHO:'还没有分数。成为第一个喂养虚空的人。',
+        RUS:'Пока нет очков. Будьте первым, кто накормит пустоту.',
+        ARA:'لا توجد نتائج بعد. كن أول من يطعم الفراغ.',
+        HIN:'अभी तक कोई स्कोर नहीं। शून्य को खिलाने वाले पहले बनें।',
+      },
+      offline: {
+        ENG:'OFFLINE · LOCAL SCORES ONLY', ESP:'SIN CONEXIÓN · SOLO PUNTOS LOCALES',
+        FRA:'HORS LIGNE · SCORES LOCAUX', DEU:'OFFLINE · NUR LOKALE PUNKTE',
+        POR:'OFFLINE · APENAS PONTOS LOCAIS', ITA:'OFFLINE · SOLO PUNTEGGI LOCALI',
+        JPN:'オフライン · ローカルスコアのみ', KOR:'오프라인 · 로컬 점수만',
+        ZHO:'离线 · 仅本地分数', RUS:'ОФФЛАЙН · ТОЛЬКО ЛОКАЛЬНЫЕ ОЧКИ',
+        ARA:'غير متصل · نتائج محلية فقط', HIN:'ऑफ़लाइन · केवल स्थानीय स्कोर',
+      },
+      tutorialFail: {
+        ENG:'Tap the red circle and drag your finger along the line that appears outward.\n\nDon\'t lift your finger until you\'ve traced the line.',
+        ESP:'Toca el círculo rojo y arrastra tu dedo a lo largo de la línea que aparece.\n\nNo levantes el dedo hasta haber trazado la línea.',
+        FRA:'Touchez le cercle rouge et glissez votre doigt le long de la ligne.\n\nNe relâchez pas tant que vous n\'avez pas tracé la ligne.',
+        DEU:'Tippe auf den roten Kreis und ziehe deinen Finger entlang der Linie.\n\nHebe deinen Finger nicht, bis du die Linie nachgezeichnet hast.',
+        POR:'Toque o círculo vermelho e arraste o dedo ao longo da linha.\n\nNão levante o dedo até ter traçado a linha.',
+        ITA:'Tocca il cerchio rosso e trascina il dito lungo la linea.\n\nNon sollevare il dito finché non hai tracciato la linea.',
+        JPN:'赤い円をタップし、表示される線に沿って指をドラッグします。\n\n線をなぞり終わるまで指を離さないでください。',
+        KOR:'빨간 원을 탭하고 나타나는 선을 따라 손가락을 드래그하세요.\n\n선을 다 따라갈 때까지 손가락을 떼지 마세요.',
+        ZHO:'点击红色圆圈，沿着出现的线拖动手指。\n\n在描完线之前不要抬起手指。',
+        RUS:'Нажмите на красный круг и проведите пальцем вдоль линии.\n\nНе отпускайте палец, пока не проведёте линию.',
+        ARA:'انقر على الدائرة الحمراء واسحب إصبعك على طول الخط.\n\nلا ترفع إصبعك حتى ترسم الخط.',
+        HIN:'लाल सर्कल पर टैप करें और दिखने वाली रेखा के साथ उंगली खींचें।\n\nरेखा पूरी होने तक उंगली न उठाएं।',
+      },
+      tapContinue: {
+        ENG:'TAP ANYWHERE TO CONTINUE', ESP:'TOCA PARA CONTINUAR', FRA:'TOUCHEZ POUR CONTINUER',
+        DEU:'TIPPE UM FORTZUFAHREN', POR:'TOQUE PARA CONTINUAR', ITA:'TOCCA PER CONTINUARE',
+        JPN:'タップして続行', KOR:'아무 곳이나 탭하여 계속', ZHO:'点击任意位置继续',
+        RUS:'НАЖМИТЕ ЧТОБЫ ПРОДОЛЖИТЬ', ARA:'انقر للمتابعة', HIN:'जारी रखने के लिए टैप करें',
+      },
+      multiplierActive: {
+        ENG:'MULTIPLIER ACTIVE', ESP:'MULTIPLICADOR ACTIVO', FRA:'MULTIPLICATEUR ACTIF',
+        DEU:'MULTIPLIKATOR AKTIV', POR:'MULTIPLICADOR ATIVO', ITA:'MOLTIPLICATORE ATTIVO',
+        JPN:'倍率有効', KOR:'배율 활성', ZHO:'倍率已激活', RUS:'МНОЖИТЕЛЬ АКТИВЕН',
+        ARA:'المضاعف نشط', HIN:'गुणक सक्रिय',
+      },
+      bonus: {
+        ENG:'BONUS', ESP:'BONIFICACIÓN', FRA:'BONUS', DEU:'BONUS', POR:'BÔNUS',
+        ITA:'BONUS', JPN:'ボーナス', KOR:'보너스', ZHO:'奖励', RUS:'БОНУС', ARA:'مكافأة', HIN:'बोनस',
+      },
+      bonusRetry: {
+        ENG:'+1 RETRY', ESP:'+1 REINTENTO', FRA:'+1 ESSAI', DEU:'+1 VERSUCH', POR:'+1 TENTATIVA',
+        ITA:'+1 TENTATIVO', JPN:'+1 リトライ', KOR:'+1 재시도', ZHO:'+1 重试', RUS:'+1 ПОПЫТКА',
+        ARA:'+1 محاولة', HIN:'+1 पुनः प्रयास',
+      },
+      classic: {
+        ENG:'CLASSIC', ESP:'CLÁSICO', FRA:'CLASSIQUE', DEU:'KLASSISCH', POR:'CLÁSSICO',
+        ITA:'CLASSICO', JPN:'クラシック', KOR:'클래식', ZHO:'经典', RUS:'КЛАССИКА', ARA:'كلاسيكي', HIN:'क्लासिक',
+      },
+      arcade: {
+        ENG:'ARCADE', ESP:'ARCADE', FRA:'ARCADE', DEU:'ARCADE', POR:'ARCADE',
+        ITA:'ARCADE', JPN:'アーケード', KOR:'아케이드', ZHO:'街机', RUS:'АРКАДА', ARA:'أركيد', HIN:'आर्केड',
+      },
+      selectMode: {
+        ENG:'SELECT MODE', ESP:'ELIGE MODO', FRA:'CHOISIR MODE', DEU:'MODUS WÄHLEN',
+        POR:'SELECIONE MODO', ITA:'SCEGLI MODALITÀ', JPN:'モード選択', KOR:'모드 선택',
+        ZHO:'选择模式', RUS:'ВЫБЕРИТЕ РЕЖИМ', ARA:'اختر الوضع', HIN:'मोड चुनें',
+      },
+      bonusLine: {
+        ENG:'BONUS', ESP:'BONUS', FRA:'BONUS', DEU:'BONUS', POR:'BÔNUS',
+        ITA:'BONUS', JPN:'ボーナス', KOR:'보너스', ZHO:'奖励', RUS:'БОНУС', ARA:'مكافأة', HIN:'बोनस',
+      },
+      lineOf: {
+        ENG:'LINE', ESP:'LÍNEA', FRA:'LIGNE', DEU:'LINIE', POR:'LINHA',
+        ITA:'LINEA', JPN:'ライン', KOR:'라인', ZHO:'线', RUS:'ЛИНИЯ', ARA:'خط', HIN:'लाइन',
+      },
+      rulesText: {
+        ENG: ['Trace the line as closely as possible — accuracy determines your base score.','Accuracy bonuses stack: 95%+ = ×1.5, 90%+ = ×1.4, 85%+ = ×1.3, 80%+ = ×1.2, 75%+ = ×1.1.','Time remaining is converted to bonus points (seconds left × 100).','Every 10 rounds, a score multiplier activates and increases.','The green portal means all three bonuses are active. Yellow = two, orange = one, red = none.','The timer gets shorter each round. Trace faster as you progress.','You start with 3 retries. Failing sends you back to your last checkpoint.','Maintain 95%+ overall accuracy to earn bonus retries at rounds 20 and 30.','If you fail before completing a single round, a tutorial will guide you.'],
+        ESP: ['Traza la línea lo más cerca posible — la precisión determina tu puntuación.','Bonos de precisión: 95%+=×1.5, 90%+=×1.4, 85%+=×1.3, 80%+=×1.2, 75%+=×1.1.','El tiempo restante se convierte en puntos extra (segundos × 100).','Cada 10 rondas, se activa un multiplicador.','Portal verde = tres bonos. Amarillo = dos, naranja = uno, rojo = ninguno.','El temporizador se acorta cada ronda.','3 reintentos. Fallar te devuelve al último punto de control.','Mantén 95%+ para reintentos extra en rondas 20 y 30.','Si fallas antes de una ronda, un tutorial te guiará.'],
+        FRA: ['Tracez la ligne le plus précisément possible — la précision détermine votre score.','Bonus: 95%+=×1.5, 90%+=×1.4, 85%+=×1.3, 80%+=×1.2, 75%+=×1.1.','Temps restant converti en bonus (secondes × 100).','Tous les 10 tours, un multiplicateur s\'active.','Portail vert = trois bonus. Jaune = deux, orange = un, rouge = aucun.','Le chrono raccourcit à chaque tour.','3 essais. Échec ramène au dernier point de contrôle.','95%+ de précision pour essais bonus aux tours 20 et 30.','Échec avant un tour = tutoriel.'],
+        DEU: ['Zeichne die Linie so genau wie möglich — Genauigkeit bestimmt den Score.','Boni: 95%+=×1.5, 90%+=×1.4, 85%+=×1.3, 80%+=×1.2, 75%+=×1.1.','Restzeit wird in Bonus umgewandelt (Sekunden × 100).','Alle 10 Runden aktiviert sich ein Multiplikator.','Grünes Portal = alle drei Boni. Gelb = zwei, Orange = eins, Rot = keiner.','Timer wird jede Runde kürzer.','3 Versuche. Scheitern bringt zum letzten Kontrollpunkt.','95%+ Genauigkeit für Bonusversuche in Runde 20 und 30.','Scheitern vor Runde 1 = Tutorial.'],
+        POR: ['Trace a linha o mais perto possível — a precisão determina a pontuação.','Bônus: 95%+=×1.5, 90%+=×1.4, 85%+=×1.3, 80%+=×1.2, 75%+=×1.1.','Tempo restante convertido em bônus (segundos × 100).','A cada 10 rodadas, um multiplicador é ativado.','Portal verde = três bônus. Amarelo = dois, laranja = um, vermelho = nenhum.','Cronômetro diminui a cada rodada.','3 tentativas. Falhar volta ao último checkpoint.','95%+ para tentativas extras nas rodadas 20 e 30.','Falhar antes de uma rodada = tutorial.'],
+        ITA: ['Traccia la linea il più vicino possibile — la precisione determina il punteggio.','Bonus: 95%+=×1.5, 90%+=×1.4, 85%+=×1.3, 80%+=×1.2, 75%+=×1.1.','Tempo rimanente convertito in bonus (secondi × 100).','Ogni 10 round si attiva un moltiplicatore.','Portale verde = tre bonus. Giallo = due, arancione = uno, rosso = nessuno.','Timer si accorcia ogni round.','3 tentativi. Fallire riporta all\'ultimo checkpoint.','95%+ per tentativi bonus ai round 20 e 30.','Fallire prima di un round = tutorial.'],
+        JPN: ['線をできるだけ正確になぞる。精度がスコアを決定。','精度ボーナス: 95%+=×1.5、90%+=×1.4、85%+=×1.3、80%+=×1.2、75%+=×1.1。','残り時間がボーナスに変換（秒×100）。','10ラウンドごとにスコア倍率が有効。','緑ポータル=3ボーナス全て。黄色=2、オレンジ=1、赤=なし。','タイマーは毎ラウンド短縮。','3回のリトライ。失敗でチェックポイントに戻る。','95%以上でラウンド20と30にボーナスリトライ。','最初のラウンド前の失敗=チュートリアル。'],
+        KOR: ['가능한 정확하게 선을 그리세요 — 정확도가 점수를 결정.','정확도 보너스: 95%+=×1.5, 90%+=×1.4, 85%+=×1.3, 80%+=×1.2, 75%+=×1.1.','남은 시간이 보너스로 전환 (초 × 100).','매 10라운드 점수 배율 활성화.','초록 포탈 = 세 보너스. 노랑 = 둘, 주황 = 하나, 빨강 = 없음.','타이머 매 라운드 짧아짐.','3번 재시도. 실패시 체크포인트로.','95%+ 유지시 라운드 20, 30에서 보너스 재시도.','첫 라운드 전 실패 = 튜토리얼.'],
+        ZHO: ['尽可能精确描线——精度决定分数。','精度奖励：95%+=×1.5，90%+=×1.4，85%+=×1.3，80%+=×1.2，75%+=×1.1。','剩余时间转换为奖励（秒×100）。','每10轮激活分数倍率。','绿色传送门=三个奖励。黄色=两个，橙色=一个，红色=无。','计时器每轮缩短。','3次重试。失败回到检查点。','95%以上精度在第20和30轮获得额外重试。','第一轮前失败=教程。'],
+        RUS: ['Проведите линию точнее — точность определяет счёт.','Бонусы: 95%+=×1.5, 90%+=×1.4, 85%+=×1.3, 80%+=×1.2, 75%+=×1.1.','Оставшееся время в бонусы (секунды × 100).','Каждые 10 раундов активируется множитель.','Зелёный портал = все три бонуса. Жёлтый = два, оранжевый = один, красный = ноль.','Таймер сокращается каждый раунд.','3 попытки. Неудача = возврат к контрольной точке.','95%+ для бонусных попыток в раундах 20 и 30.','Неудача до раунда 1 = обучение.'],
+        ARA: ['ارسم الخط بأكبر دقة — الدقة تحدد النقاط.','مكافآت: +95%=×1.5، +90%=×1.4، +85%=×1.3، +80%=×1.2، +75%=×1.1.','الوقت المتبقي يتحول لنقاط (الثواني × 100).','كل 10 جولات مضاعف نشط.','بوابة خضراء = كل المكافآت. أصفر = اثنان، برتقالي = واحد، أحمر = لا شيء.','المؤقت يقصر كل جولة.','3 محاولات. الفشل يعيد لنقطة التفتيش.','دقة +95% لمحاولات إضافية في 20 و30.','الفشل قبل الجولة 1 = تعليمي.'],
+        HIN: ['रेखा को सटीक ट्रेस करें — सटीकता स्कोर निर्धारित करती है।','बोनस: 95%+=×1.5, 90%+=×1.4, 85%+=×1.3, 80%+=×1.2, 75%+=×1.1।','शेष समय बोनस अंकों में (सेकंड × 100)।','हर 10 राउंड गुणक सक्रिय।','हरा पोर्टल = तीनों बोनस। पीला = दो, नारंगी = एक, लाल = शून्य।','टाइमर हर राउंड छोटा।','3 रिट्राई। विफलता = चेकपॉइंट पर वापसी।','95%+ सटीकता राउंड 20, 30 पर बोनस रिट्राई।','पहले राउंड से पहले विफलता = ट्यूटोरियल।'],
+      },
+      classicRules: {
+        ENG: ['Extra lines appear at each tier (every 100 rounds). The last line is a bonus — optional but worth ×1.5 compound.','Each completed line increases the streak multiplier: ×1.1 for the 2nd, ×1.2 for the 3rd, and so on.','Dots appear staggered — tapping one reveals the next. Timer starts on first tap.','Time scales with line count: 2 lines = 1.5× time, 3 = 2×, 4 = 3×.','Separate leaderboard from Arcade.'],
+        ESP: ['Líneas extra cada nivel (100 rondas). La última es bonus — opcional pero ×1.5 compuesto.','Cada línea aumenta el multiplicador de racha: ×1.1 la 2ª, ×1.2 la 3ª, etc.','Puntos escalonados — tocar uno revela el siguiente. Timer al primer toque.','Tiempo: 2 líneas = 1.5×, 3 = 2×, 4 = 3×.','Tabla separada de Arcade.'],
+        FRA: ['Lignes supplémentaires chaque palier (100 tours). La dernière est bonus — optionnelle mais ×1.5.','Chaque ligne augmente le multiplicateur: ×1.1 pour la 2ème, ×1.2 pour la 3ème, etc.','Points décalés — toucher un révèle le suivant. Chrono au premier toucher.','Temps: 2 lignes = 1.5×, 3 = 2×, 4 = 3×.','Classement séparé de l\'Arcade.'],
+        DEU: ['Zusätzliche Linien bei jedem Tier (100 Runden). Letzte ist Bonus — optional aber ×1.5.','Jede Linie erhöht den Streak: ×1.1 für die 2., ×1.2 für die 3., usw.','Punkte gestaffelt — Tippen zeigt den nächsten. Timer beim ersten Tippen.','Zeit: 2 Linien = 1.5×, 3 = 2×, 4 = 3×.','Separate Bestenliste von Arcade.'],
+        POR: ['Linhas extras a cada tier (100 rodadas). Última é bônus — opcional mas ×1.5.','Cada linha aumenta o streak: ×1.1 na 2ª, ×1.2 na 3ª, etc.','Pontos escalonados — tocar revela o próximo. Timer no primeiro toque.','Tempo: 2 linhas = 1.5×, 3 = 2×, 4 = 3×.','Placar separado do Arcade.'],
+        ITA: ['Linee extra ad ogni tier (100 round). Ultima è bonus — opzionale ma ×1.5.','Ogni linea aumenta lo streak: ×1.1 per la 2ª, ×1.2 per la 3ª, ecc.','Punti sfalsati — toccarne uno rivela il successivo. Timer al primo tocco.','Tempo: 2 linee = 1.5×, 3 = 2×, 4 = 3×.','Classifica separata dall\'Arcade.'],
+        JPN: ['ティアごと（100ラウンド）に追加ライン。最後はボーナス — 任意だが×1.5複合。','完了ラインごとにストリーク: 2本目×1.1、3本目×1.2。','ドットは段階的。タイマーは最初のタップで開始。','時間: 2本=1.5倍、3本=2倍、4本=3倍。','アーケードとは別のリーダーボード。'],
+        KOR: ['티어마다 (100라운드) 추가 라인. 마지막은 보너스 — 선택이지만 ×1.5.','완료 라인마다 연속: 2번째 ×1.1, 3번째 ×1.2.','점은 순차적. 타이머는 첫 탭에 시작.','시간: 2라인=1.5배, 3=2배, 4=3배.','아케이드와 별도 리더보드.'],
+        ZHO: ['每段位（100轮）出现额外线条。最后一条是奖励——可选但×1.5复合。','每完成一条增加连击：第2条×1.1，第3条×1.2。','红点依次出现。计时器首次点击启动。','时间：2条=1.5倍，3条=2倍，4条=3倍。','与街机模式排行榜分开。'],
+        RUS: ['Дополнительные линии каждый уровень (100 раундов). Последняя — бонус ×1.5.','Каждая линия увеличивает серию: ×1.1 за 2-ю, ×1.2 за 3-ю.','Точки поочерёдно. Таймер с первого нажатия.','Время: 2 линии = 1.5×, 3 = 2×, 4 = 3×.','Отдельная таблица от Аркады.'],
+        ARA: ['خطوط إضافية كل مستوى (100 جولة). الأخير مكافأة — اختياري لكن ×1.5.','كل خط يزيد التتابع: ×1.1 للثاني، ×1.2 للثالث.','النقاط بالتتابع. المؤقت عند أول نقرة.','الوقت: 2 = 1.5×، 3 = 2×، 4 = 3×.','لوحة منفصلة عن الأركيد.'],
+        HIN: ['हर टियर (100 राउंड) पर अतिरिक्त लाइनें। अंतिम बोनस — वैकल्पिक लेकिन ×1.5।','हर लाइन स्ट्रीक बढ़ाती है: दूसरी ×1.1, तीसरी ×1.2।','बिंदु क्रमिक। टाइमर पहले टैप पर।','समय: 2 लाइनें=1.5×, 3=2×, 4=3×।','आर्केड से अलग लीडरबोर्ड।'],
+      },
+      arcadeRules: {
+        ENG: ['A new line is added every round. Round 1 = 2, Round 2 = 3, up to 10 max.','Each completed line increases the streak multiplier: ×1.1 for the 2nd, ×1.2 for the 3rd, and so on.','Dots appear staggered — tapping one reveals the next. Timer starts on first tap.','The last line each round is a bonus — optional but worth ×1.5 compound on top of streak.','Time scales: 2 lines = 1.5×, 3 = 2×, 4 = 3×, 5 = 4× time.','Difficulty ramps much faster than Classic — both timer and line count.','Separate leaderboard from Classic.'],
+        ESP: ['Una línea nueva cada ronda. Ronda 1 = 2, Ronda 2 = 3, máximo 10.','Cada línea aumenta el multiplicador: ×1.1 la 2ª, ×1.2 la 3ª, etc.','Puntos escalonados — tocar uno revela el siguiente. Timer al primer toque.','La última es bonus — opcional pero ×1.5 compuesto sobre la racha.','Tiempo: 2 = 1.5×, 3 = 2×, 4 = 3×, 5 = 4×.','Dificultad aumenta mucho más rápido que Clásico.','Tabla separada de Clásico.'],
+        FRA: ['Nouvelle ligne chaque tour. Tour 1 = 2, Tour 2 = 3, max 10.','Chaque ligne augmente le multiplicateur: ×1.1, ×1.2, etc.','Points décalés — toucher un révèle le suivant. Chrono au premier toucher.','Dernière ligne = bonus optionnel ×1.5 composé.','Temps: 2 = 1.5×, 3 = 2×, 4 = 3×, 5 = 4×.','Difficulté monte bien plus vite qu\'en Classique.','Classement séparé du Classique.'],
+        DEU: ['Jede Runde eine neue Linie. Runde 1 = 2, Runde 2 = 3, maximal 10.','Jede Linie erhöht den Streak: ×1.1, ×1.2, usw.','Punkte gestaffelt. Timer beim ersten Tippen.','Letzte Linie = Bonus ×1.5 Compound.','Zeit: 2 = 1.5×, 3 = 2×, 4 = 3×, 5 = 4×.','Schwierigkeit steigt viel schneller als Klassisch.','Separate Bestenliste von Klassisch.'],
+        POR: ['Nova linha cada rodada. Rodada 1 = 2, Rodada 2 = 3, máximo 10.','Cada linha aumenta o streak: ×1.1, ×1.2, etc.','Pontos escalonados. Timer no primeiro toque.','Última = bônus ×1.5 composto.','Tempo: 2 = 1.5×, 3 = 2×, 4 = 3×, 5 = 4×.','Dificuldade sobe muito mais rápido que Clássico.','Placar separado do Clássico.'],
+        ITA: ['Nuova linea ogni round. Round 1 = 2, Round 2 = 3, massimo 10.','Ogni linea aumenta lo streak: ×1.1, ×1.2, ecc.','Punti sfalsati. Timer al primo tocco.','Ultima = bonus ×1.5 composto.','Tempo: 2 = 1.5×, 3 = 2×, 4 = 3×, 5 = 4×.','Difficoltà sale molto più velocemente del Classico.','Classifica separata dal Classico.'],
+        JPN: ['毎ラウンド新ライン追加。ラウンド1=2本、2=3本、最大10本。','完了ごとにストリーク: ×1.1、×1.2。','ドットは段階的。タイマーは最初のタップで。','最後はボーナス×1.5複合。','時間: 2=1.5倍、3=2倍、4=3倍、5=4倍。','難易度はクラシックよりはるかに速く上昇。','クラシックとは別のリーダーボード。'],
+        KOR: ['매 라운드 새 라인. 라운드 1=2, 2=3, 최대 10.','완료마다 연속: ×1.1, ×1.2.','점은 순차적. 첫 탭에 타이머.','마지막은 보너스 ×1.5 복합.','시간: 2=1.5배, 3=2배, 4=3배, 5=4배.','난이도 클래식보다 훨씬 빠르게.','클래식과 별도 리더보드.'],
+        ZHO: ['每轮增加新线。第1轮=2条，第2轮=3条，最多10条。','每完成一条增加连击：×1.1、×1.2。','红点依次出现。首次点击启动计时器。','最后一条是奖励×1.5复合。','时间：2=1.5倍，3=2倍，4=3倍，5=4倍。','难度比经典快得多。','与经典排行榜分开。'],
+        RUS: ['Каждый раунд новая линия. Раунд 1=2, 2=3, максимум 10.','Каждая линия увеличивает серию: ×1.1, ×1.2.','Точки поочерёдно. Таймер с первого нажатия.','Последняя — бонус ×1.5 поверх серии.','Время: 2=1.5×, 3=2×, 4=3×, 5=4×.','Сложность растёт намного быстрее Классики.','Отдельная таблица от Классики.'],
+        ARA: ['خط جديد كل جولة. الجولة 1=2، 2=3، الحد 10.','كل خط يزيد التتابع: ×1.1، ×1.2.','النقاط بالتتابع. المؤقت عند أول نقرة.','الأخير مكافأة ×1.5 فوق التتابع.','الوقت: 2=1.5×، 3=2×، 4=3×، 5=4×.','الصعوبة أسرع بكثير من الكلاسيكي.','لوحة منفصلة عن الكلاسيكي.'],
+        HIN: ['हर राउंड नई लाइन। राउंड 1=2, 2=3, अधिकतम 10।','हर लाइन स्ट्रीक बढ़ाती है: ×1.1, ×1.2।','बिंदु क्रमिक। पहले टैप पर टाइमर।','अंतिम बोनस ×1.5 कंपाउंड।','समय: 2=1.5×, 3=2×, 4=3×, 5=4×।','कठिनाई क्लासिक से बहुत तेज।','क्लासिक से अलग लीडरबोर्ड।'],
+      },
+    };
+
+    function detectLanguage() {
+      const nav = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
+      if (nav.startsWith('es')) return 'ESP';
+      if (nav.startsWith('fr')) return 'FRA';
+      if (nav.startsWith('de')) return 'DEU';
+      if (nav.startsWith('pt')) return 'POR';
+      if (nav.startsWith('it')) return 'ITA';
+      if (nav.startsWith('ja')) return 'JPN';
+      if (nav.startsWith('ko')) return 'KOR';
+      if (nav.startsWith('zh')) return 'ZHO';
+      if (nav.startsWith('ru')) return 'RUS';
+      if (nav.startsWith('ar')) return 'ARA';
+      if (nav.startsWith('hi')) return 'HIN';
+      return 'ENG';
+    }
+
+    function t(key, lang) { return (T[key] && T[key][lang]) || T[key]?.ENG || key; }
 
     /* ═══════════════════════════════════════════
        AUDIO ENGINE — Web Audio API synthesis
@@ -377,50 +707,48 @@
       return _online;
     }
 
-    function getLocalScores() {
+    function getLocalScores(mode) {
       try {
-        const raw = localStorage.getItem('hole-scores');
+        const raw = localStorage.getItem('hole-scores-' + (mode || 'classic'));
         return raw ? JSON.parse(raw).slice(0, 10) : [];
       } catch { return []; }
     }
 
-    function saveLocalScores(scores) {
+    function saveLocalScores(scores, mode) {
       try {
-        localStorage.setItem('hole-scores', JSON.stringify(scores.slice(0, 10)));
+        localStorage.setItem('hole-scores-' + (mode || 'classic'), JSON.stringify(scores.slice(0, 10)));
       } catch {}
     }
 
-    async function loadScoreboard() {
-      // if not checked yet, check now
+    async function loadScoreboard(mode) {
       if (_online === null) await checkConnectivity();
-
+      const m = mode || 'classic';
       if (_online) {
         try {
-          const res = await fetch('/api/scores');
+          const res = await fetch('/api/scores?mode=' + m);
           if (res.ok) {
             const data = await res.json();
-            if (data.length > 0) saveLocalScores(data);
+            if (data.length > 0) saveLocalScores(data, m);
             return { scores: data.slice(0, 10), source: 'online' };
           }
         } catch {}
       }
-      return { scores: getLocalScores(), source: 'local' };
+      return { scores: getLocalScores(m), source: 'local' };
     }
 
-    // Submit sends raw round data — server recalculates score
-    async function submitGameData(name, roundLog, clientScore) {
+    async function submitGameData(name, roundLog, clientScore, mode) {
+      const m = mode || 'classic';
       const localEntry = {
         n: (name || 'ANON').slice(0, 16),
         s: clientScore,
         l: roundLog.length > 0 ? '~' + roundLog.length + ' rounds' : '0',
         t: Date.now(),
       };
-      const local = getLocalScores();
+      const local = getLocalScores(m);
       local.push(localEntry);
       local.sort((a, b) => b.s - a.s);
-      saveLocalScores(local.slice(0, 10));
+      saveLocalScores(local.slice(0, 10), m);
 
-      // skip network entirely if offline
       if (!_online) {
         const rank = local.findIndex(e => e.t === localEntry.t) + 1;
         return { success: true, score: clientScore, rank, source: 'local' };
@@ -435,15 +763,13 @@
           body: JSON.stringify({
             name: (name || 'ANON').slice(0, 16),
             rounds: roundLog,
+            mode: m,
           }),
           signal: controller.signal,
         });
         clearTimeout(timeout);
         const data = await res.json();
-        if (res.ok) {
-          return { ...data, source: 'online' };
-        }
-        // pass server errors (profanity, rate limit) back to caller
+        if (res.ok) return { ...data, source: 'online' };
         return data;
       } catch {}
 
@@ -560,18 +886,21 @@
     /* ═══════════════════════════════════════════
        SCOREBOARD PANEL
        ═══════════════════════════════════════════ */
-    function Scoreboard({ onClose }) {
+    function Scoreboard({ onClose, lang: sLang, mode: sMode }) {
+      const sl = sLang || 'ENG';
+      const [activeMode, setActiveMode] = useState(sMode || 'classic');
       const [scores, setScores] = useState([]);
       const [source, setSource] = useState('');
       const [loading, setLoading] = useState(true);
 
       useEffect(() => {
-        loadScoreboard().then(result => {
+        setLoading(true);
+        loadScoreboard(activeMode).then(result => {
           setScores(result.scores);
           setSource(result.source);
           setLoading(false);
         });
-      }, []);
+      }, [activeMode]);
 
       return (
         <div style={{
@@ -580,14 +909,30 @@
           display: "flex", flexDirection: "column", alignItems: "center",
           padding: "max(16px, 3vh) 5vw", overflow: "auto",
         }}>
-          <div style={{ fontSize: "clamp(20px,5vw,32px)", fontWeight: 700, color: "#a855f7", letterSpacing: 4, marginBottom: "1vh" }}>VOID LEDGER</div>
+          <div style={{ fontSize: "clamp(20px,5vw,32px)", fontWeight: 700, color: "#a855f7", letterSpacing: 4, marginBottom: "1.5vh" }}>{t('voidLedger', sl)}</div>
+
+          {/* Classic / Arcade toggle */}
+          <div style={{ display: "flex", gap: 0, marginBottom: "1.5vh" }}>
+            {["classic", "arcade"].map(tab => (
+              <button key={tab} onClick={() => setActiveMode(tab)} style={{
+                background: activeMode === tab ? "rgba(168,85,247,0.2)" : "none",
+                border: "1px solid " + (activeMode === tab ? "rgba(168,85,247,0.5)" : "rgba(255,255,255,0.1)"),
+                color: activeMode === tab ? "#a855f7" : "rgba(255,255,255,0.35)",
+                padding: "8px 24px", fontSize: "clamp(10px,2.2vw,13px)",
+                letterSpacing: 3, cursor: "pointer", borderRadius: 0,
+                textTransform: "uppercase", fontFamily: "'Space Mono',monospace",
+                transition: "all 0.2s", fontWeight: activeMode === tab ? 700 : 400,
+              }}>{t(tab, sl)}</button>
+            ))}
+          </div>
+
           {source === 'local' && (
-            <div style={{ fontSize: "clamp(8px,1.8vw,10px)", color: "#ff3050", letterSpacing: 2, marginBottom: "1.5vh", textTransform: "uppercase" }}>offline · local scores only</div>
+            <div style={{ fontSize: "clamp(8px,1.8vw,10px)", color: "#ff3050", letterSpacing: 2, marginBottom: "1.5vh", textTransform: "uppercase" }}>{t('offline', sl)}</div>
           )}
           {loading ? (
-            <div style={{ color: "#555", fontSize: 14 }}>Loading...</div>
+            <div style={{ color: "#555", fontSize: 14 }}>...</div>
           ) : scores.length === 0 ? (
-            <div style={{ color: "#555", fontSize: "clamp(11px,2.5vw,14px)", marginTop: "3vh" }}>No scores yet. Be the first to feed the void.</div>
+            <div style={{ color: "#555", fontSize: "clamp(11px,2.5vw,14px)", marginTop: "3vh" }}>{t('noScores', sl)}</div>
           ) : (
             <div style={{ width: "100%", maxWidth: 440 }}>
               {scores.slice(0, 10).map((e, i) => (
@@ -612,7 +957,7 @@
             color: "#a855f7", padding: "10px 30px", fontSize: "clamp(11px,2.5vw,14px)",
             letterSpacing: 3, cursor: "pointer", borderRadius: 0,
             textTransform: "uppercase", fontFamily: "'Space Mono',monospace",
-          }}>Back</button>
+          }}>{ t('back', sl) }</button>
         </div>
       );
     }
@@ -624,6 +969,13 @@
       const containerRef = useRef(null);
       const [dims, setDims] = useState({ w: 400, h: 700 });
       const [gameState, setGameState] = useState("menu");
+      const [gameMode, setGameMode] = useState("classic");
+      const [lang, setLang] = useState(detectLanguage);
+      const [hoveredBtn, setHoveredBtn] = useState(null);
+      const [lineLabel, setLineLabel] = useState(""); // "LINE 1/3" or "BONUS"
+      const [allLines, setAllLines] = useState([]); // all line targets for current round
+      const [completedLines, setCompletedLines] = useState([]); // indices of completed lines
+      const [visibleDots, setVisibleDots] = useState(1); // how many dots shown so far
       const [totalRound, setTotalRound] = useState(0);
       const [score, setScore] = useState(0);
       const [dotAngle, setDotAngle] = useState(0);
@@ -644,6 +996,7 @@
       const [milestone, setMilestone] = useState(null);
       const [isSubmitting, setIsSubmitting] = useState(false);
       const [showTutorial, setShowTutorial] = useState(false);
+      const [rulesTab, setRulesTab] = useState("classic");
       const [showPortal, setShowPortal] = useState(false);
       const [portalBonusCount, setPortalBonusCount] = useState(0);
       const [scoreBreakdown, setScoreBreakdown] = useState([]);
@@ -665,6 +1018,15 @@
       const roundLog = useRef([]);
       const roundSetupRef = useRef(null);
       const submittingRef = useRef(false);
+      const startLevelRef = useRef(null);
+      const lineTargetsRef = useRef([]);
+      const currentLineIdxRef = useRef(0);
+      const roundScoreAccum = useRef(0);
+      const completedLinesRef = useRef([]);
+      const timerStartedRef = useRef(false);
+      const [timerStarted, setTimerStarted] = useState(false);
+      const visibleDotsRef = useRef(1);
+      const advanceTimeoutRef = useRef(null);
 
       // Checkpoint system: saves at each multiplier milestone
       const [checkpoint, setCheckpoint] = useState(null);
@@ -691,6 +1053,7 @@
             }
             AudioEngine.stopLaser();
             clearInterval(timerRef.current);
+            clearTimeout(advanceTimeoutRef.current);
             cancelAnimationFrame(lineAnimRef.current);
             cancelAnimationFrame(fadeAnimRef.current);
             // if mid-drag, end the attempt (can't pause a reflex game)
@@ -732,20 +1095,67 @@
 
       const lv = calcLevel(totalRound);
       const multiplier = getMultiplier(lv);
-      const maxTime = getMaxTime(totalRound);
+      const lineCount = getLineCount(gameMode, totalRound);
+      const baseTime = getMaxTime(totalRound);
+      // time scaling: 1=1x, 2=1.5x, 3=2x, 4=3x, 5=4x...
+      const timeMult = lineCount <= 1 ? 1 : lineCount === 2 ? 1.5 : lineCount - 1;
+      const maxTime = baseTime * timeMult;
       const lineLen = LINE_LENGTH_BASE + (lv.set + lv.tier * 10) * 6;
 
       const startLevel = useCallback(() => {
-        const angle = Math.random() * Math.PI * 2;
-        const lt = { angle: angle + rand(-0.6, 0.6), length: lineLen };
-        setDotAngle(angle);
-        setLineTarget(lt);
-        roundSetupRef.current = { dotAngle: angle, lineAngle: lt.angle, lineLength: lt.length };
+        const count = getLineCount(gameMode, totalRound);
+        const targets = [];
+        for (let i = 0; i < count; i++) {
+          const a = Math.random() * Math.PI * 2;
+          targets.push({ dotAngle: a, lineAngle: a + rand(-0.6, 0.6), lineLength: lineLen });
+        }
+        lineTargetsRef.current = targets;
+        currentLineIdxRef.current = 0;
+        completedLinesRef.current = [];
+        roundScoreAccum.current = 0;
+        const first = targets[0];
+        setDotAngle(first.dotAngle);
+        setLineTarget({ angle: first.lineAngle, length: first.lineLength });
+        roundSetupRef.current = first;
+        setAllLines(targets);
+        setCompletedLines([]);
+        setVisibleDots(1);
+        visibleDotsRef.current = 1;
+        setLineLabel(count > 1 ? ('1/' + count) : '');
         setLineProgress(0);
         setLineFade(1);
         setShowPortal(false);
         setPortalBonusCount(0);
         setScoreBreakdown([]);
+        cancelAnimationFrame(fadeAnimRef.current);
+        clearTimeout(advanceTimeoutRef.current);
+        AudioEngine.stopLaser();
+        setDragPath([]);
+        dragPathRef.current = [];
+        setShowLine(false);
+        showLineRef.current = false;
+        setIsDragging(false);
+        isDraggingRef.current = false;
+        setAttemptDone(false);
+        attemptDoneRef.current = false;
+        timerStartedRef.current = false;
+        setTimerStarted(false);
+        setTimeLeft(maxTime);
+        setFeedback("");
+        setShakeLevel(0);
+        setGameState("playing");
+        gameStateRef.current = "playing";
+      }, [lineLen, maxTime, gameMode, totalRound, lv, lang]);
+
+      // keep ref in sync so success handler always calls latest version
+      useEffect(() => { startLevelRef.current = startLevel; }, [startLevel]);
+
+      // Reset trace state after completing a line — next dot is already visible
+      const advanceToNextLine = useCallback(() => {
+        setLineTarget(null);
+        roundSetupRef.current = null;
+        setLineProgress(0);
+        setLineFade(1);
         cancelAnimationFrame(fadeAnimRef.current);
         AudioEngine.stopLaser();
         setDragPath([]);
@@ -756,17 +1166,16 @@
         isDraggingRef.current = false;
         setAttemptDone(false);
         attemptDoneRef.current = false;
-        setTimeLeft(maxTime);
-        setFeedback("");
+        setShowPortal(false);
+        setScoreBreakdown([]);
         setShakeLevel(0);
-        setGameState("playing");
-        gameStateRef.current = "playing";
-      }, [lineLen, maxTime]);
+        setFeedback("");
+      }, []);
 
-      const startGame = async () => {
+      const startGame = async (mode) => {
         AudioEngine.init();
         AudioEngine.startAmbient();
-        // check connectivity once — locks mode for this session
+        if (mode) setGameMode(mode);
         const online = await checkConnectivity();
         setIsOnline(online);
         setTotalRound(0);
@@ -782,7 +1191,10 @@
         totalAccHits.current = 0;
         totalAccAttempts.current = 0;
         setShowPortal(false);
-        startLevel();
+        setLineLabel("");
+        hasFailedOnce.current = false;
+        // defer startLevel so state updates (especially totalRound=0) take effect
+        setTimeout(() => { if (startLevelRef.current) startLevelRef.current(); }, 0);
       };
 
       const retryFromCheckpoint = () => {
@@ -793,12 +1205,12 @@
         setHoleRadius(checkpoint.holeRadius);
         roundLog.current = roundLog.current.slice(0, checkpoint.round);
         setRetriesLeft((prev) => prev - 1);
-        startLevel();
+        setTimeout(() => { if (startLevelRef.current) startLevelRef.current(); }, 0);
       };
 
-      // countdown
+      // countdown — starts on first tap, runs continuously through all lines
       useEffect(() => {
-        if (gameState !== "playing" || !showLine) return;
+        if (gameState !== "playing" || !timerStarted) return;
         const start = Date.now();
         const totalMs = timeLeft * 1000;
         timerRef.current = setInterval(() => {
@@ -806,25 +1218,43 @@
           setTimeLeft(remaining / 1000);
           if (remaining <= 500) setShakeLevel(2);
           else if (remaining <= 1000) setShakeLevel(1);
+          else setShakeLevel(0);
           if (remaining <= 0) {
             clearInterval(timerRef.current);
+            clearTimeout(advanceTimeoutRef.current);
             attemptDoneRef.current = true;
             isDraggingRef.current = false;
             AudioEngine.stopLaser();
-            AudioEngine.playFail();
             setAttemptDone(true);
-            setFeedback("TIME'S UP");
-            if (!hasFailedOnce.current) {
-              hasFailedOnce.current = true;
-              setShowTutorial(true);
+            const totalLines = lineTargetsRef.current.length;
+            const completed = completedLinesRef.current.length;
+            const requiredCount = totalLines > 1 ? totalLines - 1 : totalLines;
+            if (completed >= requiredCount) {
+              setFeedback('');
+              setShowPortal(true);
+              if (roundScoreAccum.current > 0) {
+                setScoreBreakdown([{ label: 'ROUND TOTAL', value: '+' + roundScoreAccum.current, color: '#fff' }]);
+                AudioEngine.playScoreTick(0);
+              }
+              setHoleRadius((prev) => prev + Math.max(1, 4 / (1 + prev * 0.01)));
+              setGameState("success");
+              gameStateRef.current = "success";
+              setTimeout(() => setTotalRound((p) => p + 1), 100);
             } else {
-              setGameState("gameover");
-              gameStateRef.current = "gameover";
+              AudioEngine.playFail();
+              setFeedback("TIME'S UP");
+              if (!hasFailedOnce.current) {
+                hasFailedOnce.current = true;
+                setShowTutorial(true);
+              } else {
+                setGameState("gameover");
+                gameStateRef.current = "gameover";
+              }
             }
           }
         }, 30);
         return () => clearInterval(timerRef.current);
-      }, [gameState, showLine, timeLeft]);
+      }, [gameState, timeLeft, timerStarted]);
 
       const dotX = cx + Math.cos(dotAngle) * circleR;
       const dotY = cy + Math.sin(dotAngle) * circleR;
@@ -879,7 +1309,6 @@
 
       const finishAttempt = useCallback((path) => {
         if (attemptDoneRef.current) return;
-        clearInterval(timerRef.current);
         cancelAnimationFrame(lineAnimRef.current);
         cancelAnimationFrame(fadeAnimRef.current);
         attemptDoneRef.current = true;
@@ -888,6 +1317,19 @@
         setIsDragging(false);
 
         const result = evaluateDrag(path);
+        const totalLines = lineTargetsRef.current.length;
+        const curIdx = currentLineIdxRef.current;
+        const isBonusLine = curIdx === totalLines - 1 && totalLines > 1;
+        const isOnlyLine = totalLines === 1;
+
+        const endRound = () => {
+          clearInterval(timerRef.current);
+          setShowPortal(true);
+          setHoleRadius((prev) => prev + Math.max(1, 4 / (1 + prev * 0.01)));
+          setGameState("success");
+          gameStateRef.current = "success";
+          setTimeout(() => setTotalRound((p) => p + 1), 100);
+        };
 
         if (result.passed) {
           AudioEngine.stopLaser();
@@ -897,11 +1339,9 @@
           const timeRemaining = Math.max(0, maxTime - elapsed);
           const accuracyPct = Math.round(result.accuracy * 100);
 
-          // track overall accuracy for bonus retries
           totalAccAttempts.current += 1;
           totalAccHits.current += result.accuracy;
 
-          // accuracy bonus multiplier: 95%+ = x1.5, scales down per 5%
           let accMult = 1.0;
           if (accuracyPct >= 95) accMult = 1.5;
           else if (accuracyPct >= 90) accMult = 1.4;
@@ -909,27 +1349,26 @@
           else if (accuracyPct >= 80) accMult = 1.2;
           else if (accuracyPct >= 75) accMult = 1.1;
 
-          // base score from coverage and accuracy
           const baseScore = Math.round(result.accuracy * 400 + result.coverage * 200);
-          // time bonus: remaining time * 100
-          const timeBonus = Math.round(timeRemaining * 100);
-          // apply accuracy multiplier to base
+          const compoundMult = isBonusLine ? 1.5 : 1;
+          // line streak multiplier: 1.0 first line, 1.1 second, 1.2 third, etc.
+          const lineStreakMult = isOnlyLine ? 1 : 1 + completedLinesRef.current.length * 0.1;
+          // time bonus only on final line of round
+          const timeBonus = (isBonusLine || isOnlyLine) ? Math.round(timeRemaining * 100) : 0;
           const accBoosted = Math.round(baseScore * accMult);
-          // apply level multiplier
-          const finalScore = Math.round((accBoosted + timeBonus) * multiplier);
+          const finalScore = Math.round((accBoosted + timeBonus) * multiplier * compoundMult * lineStreakMult);
 
-          // count bonuses for portal color: accuracy, time, level
           let bonuses = 0;
           if (accMult > 1) bonuses++;
           if (timeBonus > 0) bonuses++;
           if (multiplier > 1) bonuses++;
           setPortalBonusCount(bonuses);
-          setShowPortal(true);
+          // portal shows at round end only
 
+          roundScoreAccum.current += finalScore;
           internalScore.current += finalScore;
           setScore(internalScore.current);
 
-          // log raw round data for server-side verification
           if (roundSetupRef.current) {
             roundLog.current.push({
               dotAngle: roundSetupRef.current.dotAngle,
@@ -940,47 +1379,69 @@
             });
           }
 
-          // build stacking breakdown lines
-          const lines = [];
-          lines.push({ label: 'BASE', value: baseScore, color: '#a855f7' });
-          if (accMult > 1) {
-            lines.push({ label: 'ACCURACY ' + accuracyPct + '%', value: 'x' + accMult, color: '#ff9020' });
+          if (isOnlyLine) {
+            // single line round — full breakdown
+            completedLinesRef.current = [0];
+            setCompletedLines([0]);
+            const lines = [];
+            lines.push({ label: 'BASE', value: baseScore, color: '#a855f7' });
+            if (accMult > 1) lines.push({ label: 'ACCURACY ' + accuracyPct + '%', value: 'x' + accMult, color: '#ff9020' });
+            if (timeBonus > 0) lines.push({ label: 'TIME', value: '+' + timeBonus, color: '#40d0ff' });
+            if (multiplier > 1) lines.push({ label: 'LEVEL', value: 'x' + multiplier, color: '#ff3050' });
+            lines.push({ label: 'TOTAL', value: '+' + finalScore, color: '#fff' });
+            setScoreBreakdown(lines);
+            lines.forEach((_, i) => setTimeout(() => AudioEngine.playScoreTick(i), i * 120));
+            if (accMult > 1) setTimeout(() => AudioEngine.playAccuracyBonus(), lines.length * 120);
+            setFeedback('');
+            endRound();
+          } else if (isBonusLine) {
+            // bonus line completed — compound score, flash portal, end round
+            completedLinesRef.current = [...completedLinesRef.current, curIdx];
+            setCompletedLines([...completedLinesRef.current]);
+            const lines = [
+              { label: 'STREAK', value: 'x' + lineStreakMult.toFixed(1), color: '#ff9020' },
+              { label: 'COMPOUND', value: 'x1.5', color: '#40d0ff' },
+              { label: 'ROUND TOTAL', value: '+' + roundScoreAccum.current, color: '#fff' },
+            ];
+            setScoreBreakdown(lines);
+            lines.forEach((_, i) => setTimeout(() => AudioEngine.playScoreTick(i), i * 120));
+            setFeedback('');
+            endRound();
+          } else {
+            // required line done — mark completed, instant reset for next tap
+            completedLinesRef.current = [...completedLinesRef.current, curIdx];
+            setCompletedLines([...completedLinesRef.current]);
+            const remaining = totalLines - completedLinesRef.current.length;
+            const nextIsBonus = remaining === 1 && totalLines > 1;
+            setLineLabel(nextIsBonus ? t('bonusLine', lang) : (completedLinesRef.current.length + 1) + '/' + totalLines);
+            AudioEngine.playScoreTick(0);
+            setFeedback('');
+            advanceToNextLine();
           }
-          if (timeBonus > 0) {
-            lines.push({ label: 'TIME', value: '+' + timeBonus, color: '#40d0ff' });
-          }
-          if (multiplier > 1) {
-            lines.push({ label: 'LEVEL', value: 'x' + multiplier, color: '#ff3050' });
-          }
-          lines.push({ label: 'TOTAL', value: '+' + finalScore, color: '#fff' });
-          setScoreBreakdown(lines);
-
-          // play ascending ticks for each line, accuracy shimmer if bonus
-          lines.forEach((_, i) => {
-            setTimeout(() => AudioEngine.playScoreTick(i), i * 150);
-          });
-          if (accMult > 1) {
-            setTimeout(() => AudioEngine.playAccuracyBonus(), lines.length * 150);
-          }
-
-          setFeedback(''); // clear old feedback, breakdown handles display
-          setHoleRadius((prev) => prev + Math.max(1, 4 / (1 + prev * 0.01)));
-          setGameState("success");
-          gameStateRef.current = "success";
-          setTimeout(() => setTotalRound((p) => p + 1), 100);
         } else {
           AudioEngine.stopLaser();
-          AudioEngine.playFail();
-          setFeedback(result.reason || (result.coverage <= 0.5 ? "TRACE FURTHER" : "TOO SLOPPY"));
-          if (!hasFailedOnce.current) {
-            hasFailedOnce.current = true;
-            setShowTutorial(true);
+          if (isBonusLine) {
+            // bonus failed — no penalty, end round with tally
+            setFeedback('');
+            if (roundScoreAccum.current > 0) {
+              setScoreBreakdown([{ label: 'ROUND TOTAL', value: '+' + roundScoreAccum.current, color: '#fff' }]);
+              AudioEngine.playScoreTick(0);
+            }
+            endRound();
           } else {
-            setGameState("gameover");
-            gameStateRef.current = "gameover";
+            AudioEngine.playFail();
+            clearInterval(timerRef.current);
+            setFeedback(result.reason || (result.coverage <= 0.5 ? "TRACE FURTHER" : "TOO SLOPPY"));
+            if (!hasFailedOnce.current) {
+              hasFailedOnce.current = true;
+              setShowTutorial(true);
+            } else {
+              setGameState("gameover");
+              gameStateRef.current = "gameover";
+            }
           }
         }
-      }, [evaluateDrag, maxTime, multiplier, lv.set, cx, cy, circleR]);
+      }, [evaluateDrag, maxTime, multiplier, lv.set, cx, cy, circleR, advanceToNextLine, lang]);
 
       // FULLY NATIVE event handling — no React synthetic events at all
       // This eliminates any race between React's event system and native touch
@@ -992,42 +1453,73 @@
         const onDown = (e) => {
           if (gameStateRef.current !== "playing" || attemptDoneRef.current) return;
           const isTouch = e.type === 'touchstart';
-          if (isTouch) e.preventDefault();
           if (showLineRef.current) return;
           const rect = el.getBoundingClientRect();
           const px = (isTouch ? e.touches[0].clientX : e.clientX) - rect.left;
           const py = (isTouch ? e.touches[0].clientY : e.clientY) - rect.top;
-          if (dist(px, py, dotX, dotY) < 35) {
-            showLineRef.current = true;
-            isDraggingRef.current = true;
-            dragPathRef.current = [{ x: px, y: py }];
-            setShowLine(true);
-            setIsDragging(true);
-            setDragPath([{ x: px, y: py }]);
-            levelStartTime.current = Date.now();
-            AudioEngine.startLaser();
-            const drawSpeed = 0.12 + lv.set * 0.02 + lv.tier * 0.05;
-            const fadeSpeed = 0.015 + lv.set * 0.004 + lv.tier * 0.01;
-            let prog = 0;
-            const anim = () => {
-              prog += drawSpeed;
-              if (prog >= 1) {
-                setLineProgress(1);
-                let fade = 1;
-                const fadeAnim = () => {
-                  fade -= fadeSpeed;
-                  if (fade <= 0) { setLineFade(0); return; }
-                  setLineFade(fade);
-                  fadeAnimRef.current = requestAnimationFrame(fadeAnim);
-                };
-                fadeAnimRef.current = requestAnimationFrame(fadeAnim);
-                return;
-              }
-              setLineProgress(prog);
-              lineAnimRef.current = requestAnimationFrame(anim);
-            };
-            anim();
+
+          // check only VISIBLE uncompleted dots
+          const targets = lineTargetsRef.current;
+          const completed = completedLinesRef.current;
+          const visible = visibleDotsRef.current;
+          let hitIdx = -1;
+          for (let i = 0; i < visible && i < targets.length; i++) {
+            if (completed.includes(i)) continue;
+            const tdx = cx + Math.cos(targets[i].dotAngle) * circleR;
+            const tdy = cy + Math.sin(targets[i].dotAngle) * circleR;
+            if (dist(px, py, tdx, tdy) < 35) { hitIdx = i; break; }
           }
+          if (hitIdx === -1) return;
+
+          // only prevent default after confirmed dot hit
+          if (isTouch) e.preventDefault();
+
+          const lt = targets[hitIdx];
+          currentLineIdxRef.current = hitIdx;
+          roundSetupRef.current = { dotAngle: lt.dotAngle, lineAngle: lt.lineAngle, lineLength: lt.lineLength };
+          setDotAngle(lt.dotAngle);
+          setLineTarget({ angle: lt.lineAngle, length: lt.lineLength });
+
+          // reveal next dot on tap
+          if (visible < targets.length) {
+            visibleDotsRef.current = visible + 1;
+            setVisibleDots(visible + 1);
+          }
+
+          showLineRef.current = true;
+          isDraggingRef.current = true;
+          dragPathRef.current = [{ x: px, y: py }];
+          setShowLine(true);
+          setIsDragging(true);
+          setDragPath([{ x: px, y: py }]);
+          // timer starts on first tap of the round
+          if (completed.length === 0) {
+            levelStartTime.current = Date.now();
+            timerStartedRef.current = true;
+            setTimerStarted(true);
+          }
+          AudioEngine.startLaser();
+          const drawSpeed = 0.12 + lv.set * 0.02 + lv.tier * 0.05;
+          const fadeSpeed = 0.015 + lv.set * 0.004 + lv.tier * 0.01;
+          let prog = 0;
+          const anim = () => {
+            prog += drawSpeed;
+            if (prog >= 1) {
+              setLineProgress(1);
+              let fade = 1;
+              const fadeAnim = () => {
+                fade -= fadeSpeed;
+                if (fade <= 0) { setLineFade(0); return; }
+                setLineFade(fade);
+                fadeAnimRef.current = requestAnimationFrame(fadeAnim);
+              };
+              fadeAnimRef.current = requestAnimationFrame(fadeAnim);
+              return;
+            }
+            setLineProgress(prog);
+            lineAnimRef.current = requestAnimationFrame(anim);
+          };
+          anim();
         };
 
         const onMove = (e) => {
@@ -1073,7 +1565,7 @@
           el.removeEventListener('mouseup', onUp);
           el.removeEventListener('contextmenu', noContext);
         };
-      }, [dotX, dotY, totalRound, finishAttempt]);
+      }, [cx, cy, circleR, totalRound, finishAttempt, lv]);
 
       useEffect(() => {
         if (gameState === "success") {
@@ -1082,7 +1574,6 @@
             const newMult = getMultiplier(newLv);
             setCheckpoint({ round: totalRound, score: internalScore.current, holeRadius: holeRadius });
 
-            // bonus retry at 0/2/0 (round 20) and 0/3/0 (round 30) if overall accuracy >= 95%
             const overallAcc = totalAccAttempts.current > 0
               ? (totalAccHits.current / totalAccAttempts.current) * 100 : 0;
             let bonusRetry = false;
@@ -1094,20 +1585,22 @@
             setMilestone({ mult: newMult, level: levelString(newLv), bonusRetry });
             const t = setTimeout(() => {
               setMilestone(null);
-              startLevel();
-            }, 2200);
+              if (startLevelRef.current) startLevelRef.current();
+            }, 1500);
             return () => clearTimeout(t);
           } else {
-            const t = setTimeout(() => startLevel(), 1800);
+            const t = setTimeout(() => {
+              if (startLevelRef.current) startLevelRef.current();
+            }, 1100);
             return () => clearTimeout(t);
           }
         }
-      }, [gameState, totalRound, startLevel, holeRadius]);
+      }, [gameState, totalRound, holeRadius]);
 
       // Check if score qualifies for leaderboard when entering gameover
       useEffect(() => {
         if (gameState === "gameover" && score > 0) {
-          loadScoreboard().then(result => {
+          loadScoreboard(gameMode).then(result => {
             const scores = result.scores;
             setQualifiesForBoard(scores.length < 10 || score > scores[scores.length - 1].s);
           });
@@ -1142,7 +1635,7 @@
         }
 
         setSubmitStatus("Submitting...");
-        const result = await submitGameData(name, roundLog.current, score);
+        const result = await submitGameData(name, roundLog.current, score, gameMode);
         if (result.error) {
           if (result.error === 'profanity') {
             // server caught it
@@ -1180,7 +1673,7 @@
         }
       };
 
-      const timerWidth = showLine ? (timeLeft / maxTime) * 100 : 100;
+      const timerWidth = timerStarted ? (timeLeft / maxTime) * 100 : 100;
       const timerColor = timeLeft < 0.8 ? "#ff2040" : timeLeft < 1.5 ? "#ffaa00" : "#a855f7";
 
       return (
@@ -1189,7 +1682,8 @@
           style={{
             position: "fixed", inset: 0, background: "#08060e",
             overflow: "hidden", cursor: isDragging ? "grabbing" : "default",
-            userSelect: "none", WebkitUserSelect: "none", touchAction: "none",
+            userSelect: "none", WebkitUserSelect: "none",
+            touchAction: gameState === "playing" ? "none" : "auto",
             WebkitTouchCallout: "none", WebkitTapHighlightColor: "transparent",
           }}
         >
@@ -1215,6 +1709,8 @@
             @keyframes milestoneIn{0%{opacity:0;transform:translate(-50%,-50%) scale(0.5)}15%{opacity:1;transform:translate(-50%,-50%) scale(1.15)}30%{transform:translate(-50%,-50%) scale(1)}85%{opacity:1;transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(-50%,-50%) scale(1.3)}}
             @keyframes nameShake{0%,100%{transform:translateX(0)}10%{transform:translateX(-8px)}20%{transform:translateX(8px)}30%{transform:translateX(-6px)}40%{transform:translateX(6px)}50%{transform:translateX(-4px)}60%{transform:translateX(4px)}70%{transform:translateX(-2px)}80%{transform:translateX(2px)}}
             @keyframes titlePulse{0%,100%{text-shadow:0 0 20px rgba(255,255,255,0.3), 0 0 40px rgba(168,85,247,0.3)}50%{text-shadow:0 0 40px rgba(255,255,255,0.7), 0 0 80px rgba(168,85,247,0.5), 0 0 120px rgba(255,255,255,0.2)}}
+            @keyframes tutorialDot{0%{left:15%;top:50%;opacity:1}100%{left:85%;top:30%;opacity:0.6}}
+            @keyframes tutorialTrace{0%{width:0}100%{width:70%}}
           `}</style>
 
           {/* BLACK HOLE (z:1) */}
@@ -1253,17 +1749,22 @@
           {/* PORTAL EFFECT on success */}
           <Portal cx={cx} cy={cy} radius={circleR + 10} active={showPortal} bonusCount={portalBonusCount} />
 
-          {/* Red pulsing dot (z:15) */}
-          {gameState === "playing" && !showLine && !attemptDone && (
-            <div style={{
-              position: "absolute", left: dotX, top: dotY,
-              width: 16 + dotPulse * 14, height: 16 + dotPulse * 14,
-              borderRadius: "50%", background: "radial-gradient(circle, #ff3050, #cc1030)",
-              transform: "translate(-50%,-50%)", zIndex: 15,
-              boxShadow: '0 0 ' + (8 + dotPulse * 16) + 'px ' + (2 + dotPulse * 6) + 'px rgba(255,40,60,' + (0.5 + dotPulse * 0.4) + ')',
-              cursor: "pointer", pointerEvents: "none",
-            }} />
-          )}
+          {/* Dots — staggered: only visible ones shown, all red (z:15) */}
+          {gameState === "playing" && !showLine && !attemptDone && allLines.map((lt, i) => {
+            if (i >= visibleDots || completedLines.includes(i)) return null;
+            return (
+              <div key={'dot-'+i} style={{
+                position: "absolute",
+                left: cx + Math.cos(lt.dotAngle) * circleR,
+                top: cy + Math.sin(lt.dotAngle) * circleR,
+                width: 16 + dotPulse * 14, height: 16 + dotPulse * 14,
+                borderRadius: "50%", background: "radial-gradient(circle, #ff3050, #cc1030)",
+                transform: "translate(-50%,-50%)", zIndex: 15,
+                boxShadow: '0 0 ' + (8 + dotPulse * 16) + 'px ' + (2 + dotPulse * 6) + 'px rgba(255,40,60,' + (0.5 + dotPulse * 0.4) + ')',
+                cursor: "pointer", pointerEvents: "none",
+              }} />
+            );
+          })}
 
           {/* HUD (z:20) */}
           <div style={{
@@ -1283,6 +1784,9 @@
                 <span style={{ color: "#fff", fontWeight: 700 }}>{levelString(lv)}</span>
                 {multiplier > 1 && (
                   <span style={{ color: "#ff3050", marginLeft: 4, fontSize: "clamp(9px,2vw,12px)" }}>{multiplier}x</span>
+                )}
+                {lineLabel && (
+                  <span style={{ color: lineLabel === t('bonusLine', lang) ? "#40d0ff" : "rgba(168,85,247,0.6)", marginLeft: 6, fontSize: "clamp(8px,1.8vw,10px)", letterSpacing: 1 }}>{lineLabel}</span>
                 )}
               </div>
               <div style={{ color: "#fff", fontSize: "clamp(14px,3.5vw,22px)", fontWeight: 700, letterSpacing: 3 }}>{score.toLocaleString()}</div>
@@ -1357,20 +1861,16 @@
                 fontSize: "clamp(14px,3.5vw,20px)", color: "#a855f7",
                 letterSpacing: 3, marginBottom: "3vh", textTransform: "uppercase",
                 fontWeight: 700,
-              }}>how to play</div>
+              }}>{t('howToPlay', lang)}</div>
               <div style={{
                 fontSize: "clamp(13px,3vw,18px)", color: "rgba(255,255,255,0.8)",
                 textAlign: "center", lineHeight: 2, maxWidth: 360,
-                letterSpacing: 1,
-              }}>
-                Tap the red circle and drag your finger along the line that appears outward.
-                <br /><br />
-                Don't lift your finger until you've traced the line.
-              </div>
+                letterSpacing: 1, whiteSpace: "pre-line",
+              }}>{t('tutorialFail', lang)}</div>
               <div style={{
                 marginTop: "5vh", fontSize: "clamp(10px,2vw,12px)",
                 color: "rgba(168,85,247,0.4)", letterSpacing: 3, textTransform: "uppercase",
-              }}>tap anywhere to continue</div>
+              }}>{t('tapContinue', lang)}</div>
             </div>
           )}
 
@@ -1392,33 +1892,37 @@
                 fontSize: "clamp(16px,4vw,28px)", fontWeight: 700,
                 color: "#fff", letterSpacing: 8, marginTop: 4,
                 textShadow: "0 0 20px rgba(255,255,255,0.4)",
-              }}>BONUS</div>
+              }}>{ t('bonus', lang) }</div>
               <div style={{
                 fontSize: "clamp(10px,2.5vw,14px)",
                 color: "rgba(168,85,247,0.7)", letterSpacing: 3, marginTop: 12,
-              }}>MULTIPLIER ACTIVE</div>
+              }}>{ t('multiplierActive', lang) }</div>
               {milestone.bonusRetry && (
                 <div style={{
                   fontSize: "clamp(12px,3vw,16px)", fontWeight: 700,
                   color: "#40d0ff", letterSpacing: 4, marginTop: 10,
                   textShadow: "0 0 15px rgba(64,208,255,0.5)",
-                }}>+1 RETRY</div>
+                }}>{ t('bonusRetry', lang) }</div>
               )}
             </div>
           )}
 
           {/* SCOREBOARD */}
           {gameState === "scores" && (
-            <Scoreboard onClose={() => setGameState("menu")} />
+            <Scoreboard onClose={() => setGameState("menu")} lang={lang} mode={gameMode} />
           )}
 
           {/* OVERLAYS */}
-          {(gameState === "menu" || gameState === "gameover" || gameState === "submit") && (
+          {(gameState === "menu" || gameState === "gameover" || gameState === "submit" || gameState === "tutorial" || gameState === "rules") && (
             <div style={{
               position: "absolute", inset: 0, display: "flex", flexDirection: "column",
-              alignItems: "center", justifyContent: "center", zIndex: 50,
-              background: gameState === "menu" ? "rgba(8,6,14,0.85)" : "rgba(8,6,14,0.75)",
-              animation: "fadeInUp 0.5s ease-out",
+              alignItems: "center",
+              justifyContent: (gameState === "rules" || gameState === "tutorial") ? "flex-start" : "center",
+              zIndex: 50,
+              background: gameState === "menu" ? "rgba(8,6,14,0.85)" : "rgba(8,6,14,0.88)",
+              animation: "fadeInUp 0.5s ease-out", overflow: "auto",
+              paddingTop: (gameState === "rules" || gameState === "tutorial") ? "max(20px, 4vh)" : 0,
+              paddingBottom: (gameState === "rules" || gameState === "tutorial") ? "max(20px, 4vh)" : 0,
             }}>
               {gameState === "menu" && (<>
                 <div style={{
@@ -1430,19 +1934,241 @@
                   transform: "translate(-50%,-50%)",
                   pointerEvents: "none",
                 }} />
-                <div style={{ fontSize: "clamp(36px,10vw,72px)", fontWeight: 700, color: "#fff", letterSpacing: 8, marginBottom: 8, animation: "titlePulse 3s ease-in-out infinite" }}>THE HOLE</div>
-                <div style={{ fontSize: "clamp(10px,2.5vw,14px)", color: "rgba(200,170,255,0.8)", letterSpacing: 6, marginBottom: "6vh", textTransform: "uppercase" }}>feed the void</div>
-                <div style={{ display: "flex", gap: 16, flexWrap: "wrap", justifyContent: "center" }}>
-                  <button onClick={startGame} style={{ background: "none", border: "1px solid rgba(168,85,247,0.4)", color: "#a855f7", padding: "12px 40px", fontSize: "clamp(12px,3vw,16px)", letterSpacing: 4, cursor: "pointer", borderRadius: 0, transition: "all 0.3s", textTransform: "uppercase", fontFamily: "'Space Mono',monospace" }}
-                    onMouseEnter={(e) => { e.target.style.background = "rgba(168,85,247,0.15)"; e.target.style.borderColor = "rgba(168,85,247,0.8)"; }}
-                    onMouseLeave={(e) => { e.target.style.background = "none"; e.target.style.borderColor = "rgba(168,85,247,0.4)"; }}>Begin</button>
-                  <button onClick={() => setGameState("scores")} style={{ background: "none", border: "1px solid rgba(168,85,247,0.2)", color: "rgba(168,85,247,0.6)", padding: "12px 30px", fontSize: "clamp(11px,2.5vw,14px)", letterSpacing: 3, cursor: "pointer", borderRadius: 0, textTransform: "uppercase", fontFamily: "'Space Mono',monospace" }}>Scores</button>
+                <div style={{ fontSize: "clamp(36px,10vw,72px)", fontWeight: 700, color: "#fff", letterSpacing: 8, marginBottom: 8, animation: "titlePulse 3s ease-in-out infinite" }}>{t('title', lang)}</div>
+                <div style={{ fontSize: "clamp(10px,2.5vw,14px)", color: "rgba(200,170,255,0.8)", letterSpacing: 6, marginBottom: "2vh", textTransform: "uppercase" }}>{t('subtitle', lang)}</div>
+
+                {/* Mode selector */}
+                <div style={{ display: "flex", gap: 0, marginBottom: "3vh" }}>
+                  {['classic', 'arcade'].map(m => (
+                    <button key={m} onClick={() => setGameMode(m)} style={{
+                      background: gameMode === m ? "rgba(168,85,247,0.15)" : "none",
+                      border: "1px solid " + (gameMode === m ? "rgba(168,85,247,0.6)" : "rgba(168,85,247,0.15)"),
+                      color: gameMode === m ? "#c084fc" : "rgba(168,85,247,0.35)",
+                      padding: "8px 20px", fontSize: "clamp(9px,2vw,12px)",
+                      letterSpacing: 3, cursor: "pointer", borderRadius: 0,
+                      textTransform: "uppercase", fontFamily: "'Space Mono',monospace",
+                      transition: "all 0.2s",
+                      borderLeft: m === 'arcade' ? 'none' : undefined,
+                    }}>{t(m, lang)}</button>
+                  ))}
                 </div>
-                <div style={{ marginTop: "4vh", color: "rgba(255,255,255,0.7)", fontSize: "clamp(9px,2vw,11px)", textAlign: "center", lineHeight: 1.8, letterSpacing: 1, maxWidth: "80%" }}>tap the red dot · trace the line · grow the hole</div>
+
+                {/* Stacking button system */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 0, alignItems: "center", width: "min(300px, 75vw)" }}>
+                  {[
+                    { key: 'begin', action: () => startGame(gameMode), primary: true },
+                    { key: 'tutorial', action: () => setGameState("tutorial") },
+                    { key: 'rules', action: () => setGameState("rules") },
+                    { key: 'scores', action: () => setGameState("scores") },
+                  ].map((btn, i) => {
+                    const isHovered = hoveredBtn === btn.key;
+                    const hasHover = hoveredBtn !== null;
+                    const shrink = hasHover && !isHovered;
+                    return (
+                      <button key={btn.key}
+                        onClick={btn.action}
+                        onMouseEnter={() => setHoveredBtn(btn.key)}
+                        onMouseLeave={() => setHoveredBtn(null)}
+                        onTouchStart={() => setHoveredBtn(btn.key)}
+                        onTouchEnd={() => setTimeout(() => setHoveredBtn(null), 150)}
+                        style={{
+                          background: isHovered ? "rgba(168,85,247,0.12)" : "none",
+                          border: "1px solid " + (isHovered ? "rgba(168,85,247,0.8)" : btn.primary ? "rgba(168,85,247,0.4)" : "rgba(168,85,247,0.2)"),
+                          color: isHovered ? "#c084fc" : btn.primary ? "#a855f7" : "rgba(168,85,247,0.6)",
+                          padding: isHovered ? "14px 40px" : shrink ? "8px 40px" : "11px 40px",
+                          fontSize: isHovered ? "clamp(14px,3.5vw,18px)" : shrink ? "clamp(9px,2vw,12px)" : btn.primary ? "clamp(12px,3vw,16px)" : "clamp(11px,2.5vw,14px)",
+                          letterSpacing: isHovered ? 6 : btn.primary ? 4 : 3,
+                          cursor: "pointer", borderRadius: 0,
+                          textTransform: "uppercase",
+                          fontFamily: "'Space Mono',monospace",
+                          width: "100%",
+                          transition: "all 0.25s ease-out",
+                          transform: isHovered ? "scale(1.03)" : shrink ? "scale(0.96)" : "scale(1)",
+                          opacity: shrink ? 0.5 : 1,
+                          borderTop: i > 0 ? "none" : undefined,
+                          marginTop: i > 0 ? -1 : 0,
+                          position: "relative",
+                          zIndex: isHovered ? 2 : 1,
+                        }}
+                      >{t(btn.key, lang)}</button>
+                    );
+                  })}
+                </div>
+
+                <div style={{ marginTop: "3vh", color: "rgba(255,255,255,0.7)", fontSize: "clamp(9px,2vw,11px)", textAlign: "center", lineHeight: 1.8, letterSpacing: 1, maxWidth: "80%" }}>{t('hint', lang)}</div>
+
+                {/* Language selector — center bottom, 2 rows of 6 */}
+                <div style={{
+                  position: "absolute", bottom: "max(12px, 2vh)", left: "50%",
+                  transform: "translateX(-50%)",
+                  display: "grid", gridTemplateColumns: "repeat(6, auto)", gap: 4,
+                  justifyContent: "center",
+                }}>
+                  {LANGS.map(l => (
+                    <button key={l} onClick={() => setLang(l)} style={{
+                      background: l === lang ? "rgba(168,85,247,0.2)" : "none",
+                      border: "1px solid " + (l === lang ? "rgba(168,85,247,0.5)" : "rgba(255,255,255,0.08)"),
+                      color: l === lang ? "#a855f7" : "rgba(255,255,255,0.25)",
+                      padding: "3px 6px", fontSize: "clamp(7px,1.4vw,9px)",
+                      letterSpacing: 1, cursor: "pointer", borderRadius: 0,
+                      fontFamily: "'Space Mono',monospace",
+                      transition: "all 0.2s",
+                    }}>{l}</button>
+                  ))}
+                </div>
               </>)}
 
+              {/* TUTORIAL MODE */}
+              {gameState === "tutorial" && (
+                <div style={{ maxWidth: 420, width: "90%", padding: "2vh 0" }}>
+                  <div style={{ fontSize: "clamp(20px,5vw,32px)", fontWeight: 700, color: "#a855f7", letterSpacing: 4, marginBottom: "3vh", textAlign: "center" }}>{t('tutorial', lang)}</div>
+
+                  {/* Animated demo */}
+                  <div style={{
+                    position: "relative", width: "100%", height: 120, marginBottom: "3vh",
+                    background: "rgba(168,85,247,0.05)", border: "1px solid rgba(168,85,247,0.15)",
+                    overflow: "hidden",
+                  }}>
+                    {/* Circle */}
+                    <div style={{
+                      position: "absolute", left: "15%", top: "50%", transform: "translate(-50%,-50%)",
+                      width: 50, height: 50, borderRadius: "50%",
+                      border: "2px solid rgba(168,85,247,0.35)",
+                    }} />
+                    {/* Red dot */}
+                    <div style={{
+                      position: "absolute", left: "15%", top: "32%",
+                      width: 12, height: 12, borderRadius: "50%",
+                      background: "#ff3050", boxShadow: "0 0 8px rgba(255,48,80,0.6)",
+                      transform: "translate(-50%,-50%)",
+                    }} />
+                    {/* Target line */}
+                    <div style={{
+                      position: "absolute", left: "15%", top: "32%",
+                      width: "65%", height: 3, background: "rgba(168,85,247,0.4)",
+                      transformOrigin: "left center", transform: "rotate(-12deg)",
+                    }} />
+                    {/* Animated trace line */}
+                    <div style={{
+                      position: "absolute", left: "15%", top: "32%",
+                      height: 3, background: "rgba(255,255,255,0.8)",
+                      transformOrigin: "left center", transform: "rotate(-12deg)",
+                      animation: "tutorialTrace 2s ease-in-out infinite",
+                      boxShadow: "0 0 6px rgba(255,255,255,0.4)",
+                    }} />
+                    {/* Finger icon */}
+                    <div style={{
+                      position: "absolute",
+                      animation: "tutorialDot 2s ease-in-out infinite",
+                      fontSize: 20, transform: "translate(-50%,-50%)",
+                    }}>👆</div>
+                    {/* Labels */}
+                    <div style={{ position: "absolute", right: 8, bottom: 8, fontSize: "clamp(7px,1.5vw,9px)", color: "rgba(168,85,247,0.5)", letterSpacing: 1 }}>
+                      <span style={{ color: "rgba(168,85,247,0.6)" }}>━</span> target &nbsp;
+                      <span style={{ color: "rgba(255,255,255,0.7)" }}>━</span> trace
+                    </div>
+                  </div>
+
+                  {/* Steps */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    {(T.tutorialSteps[lang] || T.tutorialSteps.ENG).map((step, i) => (
+                      <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                        <div style={{
+                          minWidth: 24, height: 24, borderRadius: "50%",
+                          background: "rgba(168,85,247,0.15)", border: "1px solid rgba(168,85,247,0.3)",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: "clamp(9px,2vw,11px)", color: "#a855f7", fontWeight: 700,
+                        }}>{i + 1}</div>
+                        <div style={{
+                          fontSize: "clamp(11px,2.5vw,13px)", color: "rgba(255,255,255,0.75)",
+                          lineHeight: 1.6, letterSpacing: 0.5,
+                        }}>{step}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ textAlign: "center", marginTop: "3vh" }}>
+                    <button onClick={() => setGameState("menu")} style={{
+                      background: "none", border: "1px solid rgba(168,85,247,0.4)",
+                      color: "#a855f7", padding: "10px 30px", fontSize: "clamp(11px,2.5vw,14px)",
+                      letterSpacing: 3, cursor: "pointer", borderRadius: 0,
+                      textTransform: "uppercase", fontFamily: "'Space Mono',monospace",
+                    }}>{t('back', lang)}</button>
+                  </div>
+                </div>
+              )}
+
+              {/* RULES MODE */}
+              {gameState === "rules" && (
+                <div style={{ maxWidth: 420, width: "90%", padding: "2vh 0" }}>
+                  <div style={{ fontSize: "clamp(20px,5vw,32px)", fontWeight: 700, color: "#a855f7", letterSpacing: 4, marginBottom: "2vh", textAlign: "center" }}>{t('rules', lang)}</div>
+
+                  {/* Classic / Arcade toggle */}
+                  <div style={{ display: "flex", justifyContent: "center", gap: 0, marginBottom: "2.5vh" }}>
+                    {["classic", "arcade"].map(tab => (
+                      <button key={tab} onClick={() => setRulesTab(tab)} style={{
+                        background: rulesTab === tab ? "rgba(168,85,247,0.2)" : "none",
+                        border: "1px solid " + (rulesTab === tab ? "rgba(168,85,247,0.5)" : "rgba(255,255,255,0.1)"),
+                        color: rulesTab === tab ? "#a855f7" : "rgba(255,255,255,0.35)",
+                        padding: "8px 24px", fontSize: "clamp(10px,2.2vw,13px)",
+                        letterSpacing: 3, cursor: "pointer", borderRadius: 0,
+                        textTransform: "uppercase", fontFamily: "'Space Mono',monospace",
+                        transition: "all 0.2s", fontWeight: rulesTab === tab ? 700 : 400,
+                      }}>{tab === "classic" ? t('classic', lang) : t('arcade', lang)}</button>
+                    ))}
+                  </div>
+
+                  {/* Shared rules */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    {(T.rulesText[lang] || T.rulesText.ENG).map((rule, i) => (
+                      <div key={'s'+i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                        <div style={{
+                          minWidth: 6, height: 6, borderRadius: "50%", marginTop: 7,
+                          background: i < 2 ? "#a855f7" : i < 5 ? "#ff9020" : "#40d0ff",
+                        }} />
+                        <div style={{
+                          fontSize: "clamp(11px,2.5vw,13px)", color: "rgba(255,255,255,0.75)",
+                          lineHeight: 1.6, letterSpacing: 0.5,
+                        }}>{rule}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Mode-specific rules */}
+                  <div style={{ marginTop: "2vh", paddingTop: "1.5vh", borderTop: "1px solid rgba(168,85,247,0.15)" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                      {(rulesTab === "classic"
+                        ? (T.classicRules[lang] || T.classicRules.ENG)
+                        : (T.arcadeRules[lang] || T.arcadeRules.ENG)
+                      ).map((rule, i) => (
+                        <div key={'m'+i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                          <div style={{
+                            minWidth: 6, height: 6, borderRadius: "50%", marginTop: 7,
+                            background: rulesTab === "classic" ? "#a855f7" : "#ff3050",
+                          }} />
+                          <div style={{
+                            fontSize: "clamp(11px,2.5vw,13px)", color: "rgba(255,255,255,0.75)",
+                            lineHeight: 1.6, letterSpacing: 0.5,
+                          }}>{rule}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{ textAlign: "center", marginTop: "3vh" }}>
+                    <button onClick={() => setGameState("menu")} style={{
+                      background: "none", border: "1px solid rgba(168,85,247,0.4)",
+                      color: "#a855f7", padding: "10px 30px", fontSize: "clamp(11px,2.5vw,14px)",
+                      letterSpacing: 3, cursor: "pointer", borderRadius: 0,
+                      textTransform: "uppercase", fontFamily: "'Space Mono',monospace",
+                    }}>{t('back', lang)}</button>
+                  </div>
+                </div>
+              )}
+
+              {/* GAMEOVER */}
               {gameState === "gameover" && (<>
-                <div style={{ fontSize: "clamp(20px,6vw,40px)", fontWeight: 700, color: "#ff3050", letterSpacing: 4, marginBottom: 16 }}>{feedback || "CONSUMED"}</div>
+                <div style={{ fontSize: "clamp(20px,6vw,40px)", fontWeight: 700, color: "#ff3050", letterSpacing: 4, marginBottom: 16 }}>{feedback || t('consumed', lang)}</div>
                 <div style={{ fontSize: "clamp(28px,8vw,56px)", fontWeight: 700, color: "#fff", marginBottom: 8 }}>{score.toLocaleString()}</div>
                 <div style={{ fontSize: "clamp(10px,2.5vw,13px)", color: "rgba(255,255,255,0.3)", letterSpacing: 3, marginBottom: "3vh" }}>
                   {levelString(lv)}
@@ -1450,7 +2176,7 @@
                 {retriesLeft > 0 && checkpoint ? (
                   <>
                     <button onClick={handleRetry} style={{ background: "none", border: "1px solid rgba(168,85,247,0.4)", color: "#a855f7", padding: "12px 40px", fontSize: "clamp(12px,3vw,16px)", letterSpacing: 4, cursor: "pointer", borderRadius: 0, textTransform: "uppercase", fontFamily: "'Space Mono',monospace" }}>
-                      Retry {retriesLeft}
+                      {t('retry', lang)} {retriesLeft}
                     </button>
                     <div style={{ marginTop: 12, fontSize: "clamp(8px,1.8vw,10px)", color: "rgba(168,85,247,0.4)", letterSpacing: 2 }}>
                       checkpoint: {levelString(calcLevel(checkpoint.round))}
@@ -1459,24 +2185,25 @@
                 ) : qualifiesForBoard ? (
                   <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "center" }}>
                     <button onClick={handleRetry} style={{ background: "none", border: "1px solid rgba(168,85,247,0.4)", color: "#a855f7", padding: "12px 40px", fontSize: "clamp(12px,3vw,16px)", letterSpacing: 4, cursor: "pointer", borderRadius: 0, textTransform: "uppercase", fontFamily: "'Space Mono',monospace" }}>
-                      Submit Score
+                      {t('submitScore', lang)}
                     </button>
                     <button onClick={() => setGameState("menu")} style={{
                       background: "none", border: "1px solid rgba(255,255,255,0.15)",
                       color: "rgba(255,255,255,0.4)", padding: "12px 30px", fontSize: "clamp(11px,2.5vw,14px)",
                       letterSpacing: 3, cursor: "pointer", borderRadius: 0,
                       textTransform: "uppercase", fontFamily: "'Space Mono',monospace",
-                    }}>Cancel</button>
+                    }}>{t('cancel', lang)}</button>
                   </div>
                 ) : (
                   <button onClick={() => setGameState("menu")} style={{ background: "none", border: "1px solid rgba(168,85,247,0.4)", color: "#a855f7", padding: "12px 40px", fontSize: "clamp(12px,3vw,16px)", letterSpacing: 4, cursor: "pointer", borderRadius: 0, textTransform: "uppercase", fontFamily: "'Space Mono',monospace" }}>
-                    Continue
+                    {t('cont', lang)}
                   </button>
                 )}
               </>)}
 
+              {/* SUBMIT */}
               {gameState === "submit" && (<>
-                <div style={{ fontSize: "clamp(16px,4vw,24px)", fontWeight: 700, color: "#a855f7", letterSpacing: 4, marginBottom: 20 }}>ENTER NAME</div>
+                <div style={{ fontSize: "clamp(16px,4vw,24px)", fontWeight: 700, color: "#a855f7", letterSpacing: 4, marginBottom: 20 }}>{t('enterName', lang)}</div>
                 <input
                   type="text" maxLength={16} value={playerName}
                   onChange={(e) => { setPlayerName(e.target.value); setSubmitStatus(""); }}
@@ -1509,13 +2236,13 @@
                     letterSpacing: 4, cursor: isSubmitting ? "default" : "pointer", borderRadius: 0,
                     textTransform: "uppercase", fontFamily: "'Space Mono',monospace",
                     opacity: isSubmitting ? 0.5 : 1,
-                  }}>{isSubmitting ? "Submitting..." : "Submit"}</button>
+                  }}>{isSubmitting ? "..." : t('submit', lang)}</button>
                   <button onClick={() => setGameState("menu")} style={{
                     background: "none", border: "1px solid rgba(255,255,255,0.15)",
                     color: "rgba(255,255,255,0.4)", padding: "10px 30px", fontSize: "clamp(11px,2.5vw,14px)",
                     letterSpacing: 3, cursor: "pointer", borderRadius: 0,
                     textTransform: "uppercase", fontFamily: "'Space Mono',monospace",
-                  }}>Cancel</button>
+                  }}>{t('cancel', lang)}</button>
                 </div>
               </>)}
             </div>
@@ -1527,7 +2254,7 @@
             textAlign: "center", color: "#fff",
             fontSize: "clamp(8px, 1.5vw, 10px)", letterSpacing: 2,
             zIndex: 2, pointerEvents: "none",
-          }}>v0.2.0b</div>
+          }}>v0.5.4b</div>
         </div>
       );
     }
